@@ -191,7 +191,8 @@ if [ "${COS_ALLOW_CPU_ADAPTER:-0}" = 1 ] && [ -z "${timeout_given:-}" ]; then
 fi
 case "$stall_s" in ''|*[!0-9.]*) echo "run: --stall needs seconds" >&2; exit 2 ;; esac
 
-# The disc the build runs from (native/cmake/GameConfig.cmake: GZLE01, or GZLP01 for COS_VERSION=3).
+# The disc the build runs from (native/cmake/GameConfig.cmake: GZLE01, GZLP01 for COS_VERSION=3, or
+# GZLJ01 for COS_VERSION=1).
 game_id="$(sed -n 's/^COS_GAME_ID:STRING=//p' "$build/CMakeCache.txt" 2>/dev/null)"
 game_id="${game_id:-GZLE01}"
 needs_disc=1

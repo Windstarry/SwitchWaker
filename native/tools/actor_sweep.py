@@ -22,7 +22,7 @@ Options:
   --range A-B     process names to sweep (default every one)
   --timeout S     run.sh --timeout per run (default 300)
   --max-runs N    stop after N runs (default 200)
-  --disc PATH     the build's disc, GZLE01 (GZLP01 for a European build) .iso (default COS_DISC)
+  --disc PATH     the build's disc, GZLE01 (GZLP01 for a European build, GZLJ01 for a Japanese one) .iso (default COS_DISC)
   --exe PATH      the executable (default build/native-mac/switchwaker)
   --out DIR       the sweep directory (default build/native-mac/runs/actor-sweeps-<timestamp>)
 Nothing here is meant for git.
@@ -53,18 +53,23 @@ _spec.loader.exec_module(boot_sweep)
 
 
 def build_version():
-    """"PAL" for the European build directory (COS_GAME_ID GZLP01 in its CMakeCache.txt), else "USA"."""
+    """The build directory's version token ("PAL" for COS_GAME_ID GZLP01, "JPN" for GZLJ01, else
+    "USA"), as the TARGET_PC list's `#if VERSION ==/!= VERSION_<token>` lines name it."""
     try:
         with open(os.path.join(BUILD, "CMakeCache.txt"), encoding="utf-8") as f:
-            return "PAL" if "COS_GAME_ID:STRING=GZLP01" in f.read() else "USA"
+            text = f.read()
+        for id_, token in (("GZLJ01", "JPN"), ("GZLP01", "PAL")):
+            if "COS_GAME_ID:STRING=" + id_ in text:
+                return token
+        return "USA"
     except OSError:
         return "USA"
 
 
 def profile_names():
     """g_fpcPfLst_ProfileList in order (index = fpcNm process name), from the TARGET_PC list, with
-    its `#if VERSION ==/!= VERSION_<X>` lines taken for the build's version (VERSION_USA, GZLE01; or
-    VERSION_PAL, GZLP01, for the European build)."""
+    its `#if VERSION ==/!= VERSION_<X>` lines taken for the build's version (VERSION_USA, GZLE01;
+    VERSION_PAL, GZLP01, the European build; VERSION_JPN, GZLJ01, the Japanese one)."""
     version = build_version()
     text = boot_sweep.read(PROFILE_LST)
     m = re.search(r"#if TARGET_PC.*?g_fpcPfLst_ProfileList\[\] = \{(.*?)\};", text, re.S)

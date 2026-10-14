@@ -9,10 +9,11 @@
 # Files go to sdmc:/switch/switchwaker/, are read back, and must match
 # the local SHA-256. --build runs scripts/switch/build_native.sh first. (--logs is gone: the
 # session logs come from scripts/switch/switchwaker_debug.py lastlog.) --disc copies
-# the player's disc image as GZLE01.iso, or GZLP01.iso for the European disc (all the native port
-# reads; skipped if already on the console with the same size). `native-eur` (or any *-eur.nro): the
-# European NRO, pushed as sdmc:/switch/switchwaker/switchwaker.nro like the USA one (one region per SD
-# card: it replaces the USA NRO; the HOME-menu forwarder starts either), with the same caches. `native` is the native port's NRO
+# the player's disc image as GZLE01.iso, GZLP01.iso for the European disc or GZLJ01.iso for the
+# Japanese one (all the native port reads; skipped if already on the console with the same size).
+# `native-eur` (or any *-eur.nro): the European NRO, `native-jpn` (or any *-jpn.nro): the Japanese NRO,
+# pushed as sdmc:/switch/switchwaker/switchwaker.nro like the USA one (one region per SD card: it
+# replaces the USA NRO; the HOME-menu forwarder starts any), with the same caches. `native` is the native port's NRO
 # (scripts/switch/build_native.sh, the deko3d renderer), switchwaker.nro, with its
 # initial_pipeline_cache.db and initial_dksh_cache.bin (the DKSH cache built next to it).
 # (Run options live in native/user/settings.ini, written by the in-game options menu; developer
@@ -45,9 +46,9 @@ if [[ ${1:-} == --disc ]]; then
     disc=${2:?usage: push.sh --disc DISC.iso}
     staging=$(mktemp -d)
     trap 'rm -rf "$staging"' EXIT
-    # named by its game ID: the USA NRO reads GZLE01.iso, the European one GZLP01.iso
+    # named by its game ID: the USA NRO reads GZLE01.iso, the European one GZLP01.iso, the Japanese one GZLJ01.iso
     game_id=$(head -c 6 "$disc")
-    case $game_id in GZLE01|GZLP01) ;; *) echo "push: $disc is not GZLE01 or GZLP01" >&2; exit 1 ;; esac
+    case $game_id in GZLE01|GZLP01|GZLJ01) ;; *) echo "push: $disc is not GZLE01, GZLP01 or GZLJ01" >&2; exit 1 ;; esac
     ln -s "$(cd "$(dirname "$disc")" && pwd)/$(basename "$disc")" "$staging/$game_id.iso"
     "$tool" push-many "$remote_dir" "$staging/$game_id.iso"
     exit 0
@@ -108,7 +109,10 @@ for target in "$@"; do
                 dksh=build/switch-native/initial_dksh_cache.bin ;;
         native-eur) script="build_native.sh --eur" nro=build/switch-native-eur/switchwaker-eur.nro
                 dksh=build/switch-native-eur/initial_dksh_cache.bin name=switchwaker.nro ;;
+        native-jpn) script="build_native.sh --jpn" nro=build/switch-native-jpn/switchwaker-jpn.nro
+                dksh=build/switch-native-jpn/initial_dksh_cache.bin name=switchwaker.nro ;;
         *-eur.nro) script='' nro=$target name=switchwaker.nro ;;
+        *-jpn.nro) script='' nro=$target name=switchwaker.nro ;;
         *.nro) script='' nro=$target ;;
         *) echo "push: unknown target $target" >&2; exit 2 ;;
     esac

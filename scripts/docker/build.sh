@@ -4,8 +4,9 @@
 #
 #   scripts/docker/build.sh [linux|switch|all] --disc /path/to/GZLE01.iso [options]
 #
-# The disc decides the version: GZLE01 (USA) or GZLP01 (Europe, docs/PAL_DISC_PLAN.md: asset headers in
-# build/assets/GZLP01, build/native-linux-eur, build/switch-native-eur/switchwaker-eur.nro).
+# The disc decides the version: GZLE01 (USA), GZLP01 (Europe, docs/PAL_DISC_PLAN.md) or GZLJ01 (Japan):
+# asset headers in build/assets/<ID> and the Linux binary in build/native-linux[-eur|-jpn]; GZLP01 also
+# has build/switch-native-eur/switchwaker-eur.nro, GZLJ01 build/switch-native-jpn/switchwaker-jpn.nro.
 #
 #   linux    build/native-linux/switchwaker: the native Linux binary (Vulkan, OpenGL fallback),
 #            for the container's architecture (the host's: x86_64 or aarch64; see --platform)
@@ -13,7 +14,7 @@
 #   all      both (default)
 #
 # Options:
-#   --disc PATH       the GZLE01 or GZLP01 revision 0 disc image (default: $COS_DISC). Bind-mounted read-only;
+#   --disc PATH       the GZLE01, GZLP01 or GZLJ01 revision 0 disc image (default: $COS_DISC). Bind-mounted read-only;
 #                     it is never copied into an image, the repository or build/.
 #   --jobs N          parallel compile jobs (default: the number of CPUs the engine sees)
 #   --platform P      linux/amd64 or linux/arm64 for the Linux image and binary (default: the
@@ -72,7 +73,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ -z $disc ]]; then
-    echo "docker/build: no disc image: pass --disc PATH or set COS_DISC (GZLE01 or GZLP01 revision 0 .iso)" >&2
+    echo "docker/build: no disc image: pass --disc PATH or set COS_DISC (GZLE01, GZLP01 or GZLJ01 revision 0 .iso)" >&2
     exit 14
 fi
 if [[ ! -f $disc ]]; then
@@ -84,9 +85,10 @@ disc_name=$(basename "$disc")
 # the version follows the disc (its header's game ID)
 game_id=$(head -c 6 "$disc" 2>/dev/null || true)
 case $game_id in
-    GZLE01) version_args=() eur_suffix="" ;;
-    GZLP01) version_args=(-DCOS_VERSION=3) eur_suffix=-eur ;;
-    *) echo "docker/build: $disc_name is not GZLE01 or GZLP01 (game ID \"$game_id\")" >&2; exit 14 ;;
+    GZLE01) version_args=() region_suffix="" ;;
+    GZLP01) version_args=(-DCOS_VERSION=3) region_suffix=-eur ;;
+    GZLJ01) version_args=(-DCOS_VERSION=1) region_suffix=-jpn ;;
+    *) echo "docker/build: $disc_name is not GZLE01, GZLP01 or GZLJ01 (game ID \"$game_id\")" >&2; exit 14 ;;
 esac
 
 if [[ -n $engine ]]; then
@@ -101,6 +103,60 @@ if ! "$engine" info >/dev/null 2>&1; then
     echo "docker/build: '$engine info' failed: is the engine running (Docker Desktop started)?" >&2
     exit 1
 fi
+
+# Aurora at native/'s pin: a checkout under build/aurora-<short> is shared with the container through
+# /work, so both builds use it instead of cloning inside the container (whose network may not reach
+# GitHub). Made by the Switch step below (or by hand, native/README.md, "Aurora"); when it is missing,
+# the Linux configure fetches Aurora as before and the Switch step clones it in the container.
+aurora_pin=$(sed -n 's/^set(COS_AURORA_COMMIT "\([0-9a-f]*\)".*/\1/p' "$root/native/cmake/Aurora.cmake")
+aurora_short=${aurora_pin:0:7}
+aurora_dir=build/aurora-$aurora_short
+aurora_flag=(-UFETCHCONTENT_SOURCE_DIR_AURORA)
+if [[ -f $root/$aurora_dir/cmake/aurora_core.cmake ]]; then
+    aurora_flag=(-DFETCHCONTENT_SOURCE_DIR_AURORA=/work/$aurora_dir)
+fi
+
+# DNS for the containers (COS_CONTAINER_DNS, comma-separated). Docker Desktop's own resolver can be
+# poisoned on some networks (github.com answering 127.0.0.1), which breaks every git and CMake fetch
+# inside the container; a clean public resolver restores GitHub access. Unset by default.
+dns_args=()
+if [[ -n ${COS_CONTAINER_DNS:-} ]]; then
+    IFS=',' read -r -a _cos_dns <<<"$COS_CONTAINER_DNS"
+    for _d in "${_cos_dns[@]}"; do
+        [[ -n $_d ]] && dns_args+=(--dns "$_d")
+    done
+fi
+# The container reads the checkouts under /work that the host created: git's ownership check trips on
+# the bind mount's uid mapping, so mark them safe inside the container only.
+git_args=(-e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0=*)
+
+# Aurora's Dawn and nod prebuilt packages come from GitHub releases, whose asset CDN can be
+# unreachable from the container (the transfer is reset) even when github.com itself works. When the
+# host has prefetched them under build/pkgs (named from Aurora's own version file, so a version bump
+# makes this fall back to the network), point Aurora's package URLs at those files.
+pkg_arch=$(uname -m)
+[[ $pkg_arch == arm64 ]] && pkg_arch=aarch64
+if [[ -n $platform ]]; then
+    case ${platform##*/} in amd64) pkg_arch=x86_64 ;; arm64) pkg_arch=aarch64 ;; esac
+fi
+aurora_versions=$root/$aurora_dir/cmake/AuroraDependencyVersions.cmake
+pkg_flag=()
+if [[ -f $aurora_versions ]]; then
+    dawn_version=$(sed -n 's/^_aurora_dependency_version(AURORA_DAWN_VERSION "\([^"]*\)".*/\1/p' "$aurora_versions")
+    nod_version=$(sed -n 's/^_aurora_dependency_version(AURORA_NOD_VERSION "\([^"]*\)".*/\1/p' "$aurora_versions")
+    dawn_pkg=build/pkgs/dawn-$dawn_version-linux-$pkg_arch.tar.gz
+    nod_pkg=build/pkgs/libnod-$nod_version-linux-$pkg_arch.tar.gz
+    [[ -n $dawn_version && -f $root/$dawn_pkg ]] &&
+        pkg_flag+=(-DAURORA_DAWN_PACKAGE_URL=file:///work/$dawn_pkg)
+    [[ -n $nod_version && -f $root/$nod_pkg ]] &&
+        pkg_flag+=(-DAURORA_NOD_PACKAGE_URL=file:///work/$nod_pkg)
+fi
+# zstd (Aurora's WebGPU cache compression, on by default) also comes from GitHub releases, so its
+# source is prefetched the same way. The tarball's single top-level directory is stripped, which is
+# the layout extern/CMakeLists.txt expects from SOURCE_SUBDIR=build/cmake.
+zstd_src=build/pkgs/zstd-1.5.7
+[[ -f $root/$zstd_src/build/cmake/CMakeLists.txt ]] &&
+    pkg_flag+=(-DFETCHCONTENT_SOURCE_DIR_ZSTD=/work/$zstd_src)
 
 # --- the Linux build image ------------------------------------------------------------------------
 containerfile=$root/scripts/docker/Containerfile.linux
@@ -133,7 +189,8 @@ run_linux() { # extra run options..., -- command
     shift
     container_run "$engine" "$root" ${platform_args[@]+"${platform_args[@]}"} \
         -v "$disc:/disc/$disc_name:ro" -e COS_DISC="/disc/$disc_name" \
-        -e XDG_RUNTIME_DIR=/tmp ${opts[@]+"${opts[@]}"} "$image" bash -c "$*"
+        -e XDG_RUNTIME_DIR=/tmp ${dns_args[@]+"${dns_args[@]}"} ${git_args[@]+"${git_args[@]}"} \
+        ${opts[@]+"${opts[@]}"} "$image" bash -c "$*"
 }
 
 # --- 1. asset headers, 2. RecompCore -----------------------------------------------------------
@@ -149,11 +206,12 @@ fi
 
 # --- 3a. Linux --------------------------------------------------------------------------------------
 if [[ $what == linux || $what == all ]]; then
-    bdir=build/native-linux$eur_suffix$arch_suffix
+    bdir=build/native-linux$region_suffix$arch_suffix
     echo "docker/build: Linux build in $bdir ($image, $jobs jobs)"
-    # The container fetches Aurora itself: a FETCHCONTENT_SOURCE_DIR_AURORA left in the cache by a
-    # configure outside this script would name a path the container does not have.
-    run_linux -- "cmake -S native -B $bdir -G Ninja -UFETCHCONTENT_SOURCE_DIR_AURORA \
+    # Aurora comes from the checkout shared through /work when there is one (aurora_flag, above), else
+    # the container fetches it; either way an explicit -U/-D keeps a stale cache entry from an earlier
+    # configure (possibly outside this script) naming a path the container does not have.
+    run_linux -- "cmake -S native -B $bdir -G Ninja ${aurora_flag[*]} ${pkg_flag[*]} \
             -DCOS_ASSETS_DIR=/work/build/assets/$game_id ${version_args[*]-} \
             -DCOS_RECOMPCORE_DIR=/work/ref/recompcore >/dev/null &&
         ninja -C $bdir -j $jobs switchwaker cos_sdk_smoke cos_pc_tests"
@@ -189,18 +247,20 @@ fi
 
 # --- 3b. Switch -------------------------------------------------------------------------------------
 if [[ $what == switch || $what == all ]]; then
-    aurora_pin=$(sed -n 's/^set(COS_AURORA_COMMIT "\([0-9a-f]*\)".*/\1/p' "$root/native/cmake/Aurora.cmake")
-    aurora=$root/build/aurora-${aurora_pin:0:7}
+    aurora=$root/$aurora_dir
     if [[ ! -f $aurora/cmake/aurora_core.cmake ]]; then
-        echo "docker/build: fetching Aurora ${aurora_pin:0:7} into build/aurora-${aurora_pin:0:7}"
-        run_linux -- "set -e; d=/work/build/aurora-${aurora_pin:0:7}; rm -rf \$d; mkdir -p \$d; cd \$d
+        echo "docker/build: fetching Aurora $aurora_short into $aurora_dir"
+        run_linux -- "set -e; d=/work/$aurora_dir; rm -rf \$d; mkdir -p \$d; cd \$d
             git init -q; git remote add origin https://github.com/encounter/aurora.git
             git fetch -q --depth 1 origin $aurora_pin
             git -c advice.detachedHead=false checkout -q --detach FETCH_HEAD"
     fi
     echo "docker/build: Switch build (scripts/switch/build_native.sh, $jobs jobs)"
-    eur_args=()
-    [[ $game_id == GZLP01 ]] && eur_args=(--eur)
-    "$root/scripts/switch/build_native.sh" ${eur_args[@]+"${eur_args[@]}"} --aurora "$aurora" --assets "$assets" \
+    region_arg=()
+    case $game_id in
+        GZLP01) region_arg=(--eur) ;;
+        GZLJ01) region_arg=(--jpn) ;;
+    esac
+    "$root/scripts/switch/build_native.sh" ${region_arg[@]+"${region_arg[@]}"} --aurora "$aurora" --assets "$assets" \
         --recompcore "$root/ref/recompcore" --jobs "$jobs"
 fi

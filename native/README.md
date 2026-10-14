@@ -37,7 +37,9 @@ below are the whole procedure from a fresh clone; the sections after this one ex
   `dtk` binary, Aurora and the dependencies it fetches (prebuilt Dawn and nod packages, SDL3,
   abseil, fmt...).
 - Your own disc image of the game, USA, revision 0 (`GZLE01`), as a plain `.iso` (or the European
-  disc, `GZLP01`, for a `-DCOS_VERSION=3` build: [docs/PAL_DISC_PLAN.md](../docs/PAL_DISC_PLAN.md)). Nothing
+  disc, `GZLP01`, for a `-DCOS_VERSION=3` build: [docs/PAL_DISC_PLAN.md](../docs/PAL_DISC_PLAN.md);
+  or the Japanese disc, `GZLJ01`, for a `-DCOS_VERSION=1` build:
+  [docs/JPN_DISC_PLAN.md](../docs/JPN_DISC_PLAN.md)). Nothing
   derived from it goes into git: the generated files stay under `build/`, which is ignored.
 
 **One-time setup** (from the repository root)
@@ -138,8 +140,8 @@ the `audio` module since step 3.7.
 ### Layout
 
 - `native/CMakeLists.txt`: the project; `native/cmake/GameConfig.cmake`: definitions
-  (`TARGET_PC=1`, `VERSION=2` for GZLE01 or `VERSION=3` for GZLP01 with `-DCOS_VERSION=3`,
-  `COS_GAME_ID_STR`, `NDEBUG=1`), include paths and flags, on the interface
+  (`TARGET_PC=1`, `VERSION=2` for GZLE01 or `VERSION=3` for GZLP01 with `-DCOS_VERSION=3`, `VERSION=1` for
+  GZLJ01 with `-DCOS_VERSION=1`, `COS_GAME_ID_STR`, `NDEBUG=1`), include paths and flags, on the interface
   target `cos_game_headers` (Dusklight's `dusklight_game_headers`); `native/cmake/modules.cmake`:
   the modules; `native/cmake/deferred.cmake`: the units left for a later phase, each with its
   reason (`cos_defer(path "reason")`).
@@ -174,6 +176,7 @@ Python 3.10 or newer and, the first time, the network:
 ```sh
 native/tools/gen_assets.sh --disc /path/to/GZLE01.iso    # or COS_DISC=...; --out DIR for another COS_ASSETS_DIR
 native/tools/gen_assets.sh --version GZLP01 --disc /path/to/GZLP01.iso   # the European build's
+native/tools/gen_assets.sh --version GZLJ01 --disc /path/to/GZLJ01.iso   # the Japanese build's
 ```
 
 By hand, with a built checkout of the decomp (`python configure.py && ninja` for GZLE01):
@@ -414,7 +417,7 @@ COS_DISC=/nonexistent build/native-mac/switchwaker; echo $?   # 14
 
 | Variable | Meaning |
 | --- | --- |
-| `COS_DISC` | the GZLE01 revision 0 `.iso`, GZLP01 for a European build (required to boot; `run.sh --disc PATH` sets it, and `run.sh`, `regress.sh` and `disc_manifest.py` stop with exit 14 when neither is given) |
+| `COS_DISC` | the GZLE01 revision 0 `.iso`, GZLP01 for a European build, GZLJ01 for a Japanese build (required to boot; `run.sh --disc PATH` sets it, and `run.sh`, `regress.sh` and `disc_manifest.py` stop with exit 14 when neither is given) |
 | `COS_GAME_LANGUAGE` | European build: `auto` (the save's language, else the system's), `en`, `de`, `fr`, `es`, `it` (the options menu's *Idioma del juego*; restart). `run.sh` sets `en` unless given |
 | `COS_SMOKE` | a smoke test: `static-init`, and the harness self-tests `crash-test`, `panic-test`, `stall-test`, `timeout-test` |
 | `COS_MILESTONE` | exit 0 when this milestone (M0-M14 names: `static-init`, `aurora-up`, `heaps`, ...) is logged |

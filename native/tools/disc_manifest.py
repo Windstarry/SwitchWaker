@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Disc oracle: a manifest of the GZLE01 disc (docs/NATIVE_PORT_PHASE4_6.md, step 4.0d), or of the
-GZLP01 disc for the European build (docs/PAL_DISC_PLAN.md).
+GZLP01 disc for the European build (docs/PAL_DISC_PLAN.md), or of the GZLJ01 disc for the Japanese
+build.
 
 The phase 4 format steps check what the native game reads against an independent reading of the
 same disc. This script is that reading, in pure Python (standard library only): the GameCube FST,
@@ -141,16 +142,18 @@ DEFAULT_DISC = os.environ.get("COS_DISC") or None
 DEFAULT_OUT = os.path.join(BUILD, "disc_manifest.json")
 DISC_CHECK_CACHE = os.path.join(BUILD, "runs", "disc_check.txt")
 
-# The supported discs (decision H9): GZLE01 revision 0 as a plain .iso, and for the European build
-# GZLP01 revision 0 (docs/PAL_DISC_PLAN.md). These hashes are the only disc-derived values in the
-# repository. GZLE01's main.dol hash is the one the upstream recompilation project's
-# scripts/prepare.py and native/tools/run.sh have always checked; the image hash was taken from
-# that same disc. GZLP01's main.dol hash is the decompilation's (config/GZLP01/build.sha1), its
-# image hash the Redump-verified image's.
+# The supported discs (decision H9): GZLE01 revision 0 as a plain .iso, GZLP01 revision 0 for the
+# European build and GZLJ01 revision 0 for the Japanese build (docs/PAL_DISC_PLAN.md). These hashes
+# are the only disc-derived values in the repository. GZLE01's main.dol hash is the one the upstream
+# recompilation project's scripts/prepare.py and native/tools/run.sh have always checked; the image
+# hash was taken from that same disc. GZLP01's and GZLJ01's main.dol hashes are the decompilation's
+# (config/<ID>/build.sha1, its framework.dol entry); GZLP01's image hash is the Redump-verified
+# image's, GZLJ01's is the Redump image's (redump.org disc 4998, 1459978240 bytes).
 SUPPORTED = {
     # disc ID: (image SHA-1, main.dol SHA-1)
     "GZLE01": ("0289e70f470dc758c73be9b8bcd8c865fb82d8ae", "8d28bab68bb5078c38e43f29206f0bd01f7e7a67"),
     "GZLP01": ("98f0a19d9a3b2ca3352621c77f47a547c97a27f1", "9395f87830261193a3872db4b69f580303f7c4d6"),
+    "GZLJ01": ("1c4b574d7e0555ddc2b652c1a4bb02f01440c755", "995406d914da8cd1aee4ce58f4c75217c9ec01bc"),
 }
 EXPECTED_ISO_SHA1, EXPECTED_DOL_SHA1 = SUPPORTED["GZLE01"]
 GC_MAGIC = b"\xC2\x33\x9F\x3D"
@@ -2497,7 +2500,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0],
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--disc", default=DEFAULT_DISC,
-                    help="the GZLE01 (or GZLP01) revision 0 .iso (default: $COS_DISC)")
+                    help="the GZLE01, GZLP01 or GZLJ01 revision 0 .iso (default: $COS_DISC)")
     ap.add_argument("--game", choices=sorted(SUPPORTED),
                     help="the disc ID the build needs (default: any supported disc)")
     ap.add_argument("--out", default=DEFAULT_OUT)
@@ -2559,7 +2562,7 @@ def main():
 
     if not args.disc:
         print("disc_manifest: no disc image: pass --disc PATH or set COS_DISC "
-              "(the GZLE01 or GZLP01 revision 0 .iso)", file=sys.stderr)
+              "(the GZLE01, GZLP01 or GZLJ01 revision 0 .iso)", file=sys.stderr)
         return EXIT_DISC
     ok, iso_sha, dsha = verify_disc(args.disc, args.quiet, args.game)
     if not ok:

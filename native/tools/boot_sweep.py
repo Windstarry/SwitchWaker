@@ -35,7 +35,7 @@ Options:
   --target NAME   the run.sh target (default run; e.g. fx-sweep, a smoke test that ends the run)
   --env NAME=VAL  an environment variable for every run (repeatable), e.g. COS_FX_SWEEP=scene
   --list          print the chosen starts and exit (no runs)
-  --disc PATH     the build's disc, GZLE01 (GZLP01 for a European build) .iso (default COS_DISC)
+  --disc PATH     the build's disc, GZLE01 (GZLP01 for a European build, GZLJ01 for a Japanese one) .iso (default COS_DISC)
   --exe PATH      the executable (default build/native-mac/switchwaker)
   --out DIR       the sweep directory (default build/native-mac/runs/boot-sweep-<timestamp>)
 

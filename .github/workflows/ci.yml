@@ -8,9 +8,10 @@
 #                 the run harness and the header checks built with clang on x86_64 and aarch64
 #                 (with the decomp's resource index enums only: gen_assets.sh --res-only), and
 #                 the unit tests cos_sdk_smoke and cos_pc_tests run; then the game executable
-#                 switchwaker itself with COS_RUNTIME_ASSETS=ON (gen_assets.sh --stubs), for both
-#                 discs: the USA build (GZLE01) and the European one (GZLP01, COS_VERSION=3,
-#                 docs/PAL_DISC_PLAN.md)
+#                 switchwaker itself with COS_RUNTIME_ASSETS=ON (gen_assets.sh --stubs), for the
+#                 three discs: the USA build (GZLE01), the European one (GZLP01, COS_VERSION=3,
+#                 docs/PAL_DISC_PLAN.md) and the Japanese one (GZLJ01, COS_VERSION=1,
+#                 docs/JPN_DISC_PLAN.md)
 #   switch-image  the Switch build image (scripts/switch/Containerfile.native), built
 #                 and kept in the GitHub Actions cache, so a later job (or a fork) starts warm
 # Downloads (Aurora, Dawn and nod packages, SDL 3 ...) are cached across runs with actions/cache;
@@ -102,8 +103,9 @@ jobs:
               centollos-linux-build:ci bash -c '
             set -e
             # Stub assets/ headers: names, sizes and the disc locations of the arrays, no game data.
-            # GZLE01: the USA build (COS_VERSION 2, the default); GZLP01: the European one (3).
-            for v in GZLE01:2 GZLP01:3; do
+            # GZLE01: the USA build (COS_VERSION 2, the default); GZLP01: the European one (3);
+            # GZLJ01: the Japanese one (1).
+            for v in GZLE01:2 GZLP01:3 GZLJ01:1; do
               id=${v%%:*} ver=${v##*:}
               native/tools/gen_assets.sh --version $id --stubs --decomp /work/build/decomp-ci \
                   --out /work/build/ci-stubs/$id

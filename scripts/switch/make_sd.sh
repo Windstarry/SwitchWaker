@@ -3,19 +3,20 @@
 #
 #   scripts/switch/make_sd.sh --disc /path/to/GZLE01.iso [--out DIR] [--no-disc] [--jobs N] [--engine E]
 #
-# The disc decides the version: USA (GZLE01: GZLE01.iso) or Europe (GZLP01: GZLP01.iso, the build's
-# switchwaker-eur.nro; docs/PAL_DISC_PLAN.md). Either is installed as switch/switchwaker/switchwaker.nro.
+# The disc decides the version: USA (GZLE01: GZLE01.iso), Europe (GZLP01: GZLP01.iso, the build's
+# switchwaker-eur.nro; docs/PAL_DISC_PLAN.md) or Japan (GZLJ01: GZLJ01.iso, the build's
+# switchwaker-jpn.nro; docs/JPN_DISC_PLAN.md). Any is installed as switch/switchwaker/switchwaker.nro.
 #
 # No game files, code or keys come with this repository or its releases. This script does every step on
 # your computer, in containers (the host needs bash, git, Python 3 and Docker or Podman):
-#   1. checks the disc: GZLE01 or GZLP01 revision 0, uncompressed .iso (native/tools/disc_manifest.py --verify);
+#   1. checks the disc: GZLE01, GZLP01 or GZLJ01 revision 0, uncompressed .iso (native/tools/disc_manifest.py --verify);
 #   2. builds build/switch-native/switchwaker.nro (scripts/docker/build.sh switch: asset headers from
 #      the disc, RecompCore, Aurora, Dawn, the deko3d renderer and its shader cache; the first build
 #      takes an hour or more, later ones minutes);
-#   3. writes OUT/switch/switchwaker/ (default OUT: build/sd) with switchwaker.nro (the European
-#      build's switchwaker-eur.nro, renamed: one region per SD card, the HOME-menu forwarder starts
-#      either), the bundled initial_pipeline_cache.db and initial_dksh_cache.bin, and a copy of the disc
-#      as GZLE01.iso (GZLP01.iso)
+#   3. writes OUT/switch/switchwaker/ (default OUT: build/sd) with switchwaker.nro (the European or
+#      Japanese build's switchwaker-eur.nro / switchwaker-jpn.nro, renamed: one region per SD card, the
+#      HOME-menu forwarder starts any), the bundled initial_pipeline_cache.db and initial_dksh_cache.bin,
+#      and a copy of the disc as GZLE01.iso (GZLP01.iso, GZLJ01.iso)
 #      (--no-disc leaves the disc out, for an update when it is already on the card). Copy OUT's
 #      contents to the root of the SD card.
 #
@@ -48,16 +49,18 @@ command -v python3 >/dev/null || fail "Python 3 is needed"
 command -v docker >/dev/null || command -v podman >/dev/null ||
     fail "Docker or Podman is needed (Docker Desktop on macOS and Windows/WSL)"
 
-step 1 "checking the disc (GZLE01 or GZLP01 revision 0, uncompressed .iso)"
+step 1 "checking the disc (GZLE01, GZLP01 or GZLJ01 revision 0, uncompressed .iso)"
 if ! python3 -I "$root/native/tools/disc_manifest.py" --verify --disc "$disc"; then
-    fail "this is not a disc the port is built for: The Wind Waker, USA (GZLE01) or Europe (GZLP01),
-revision 0, as an uncompressed .iso (not RVZ, GCZ, CISO or NKit; Dolphin can convert: right-click >
-Convert File)."
+    fail "this is not a disc the port is built for: The Wind Waker, USA (GZLE01), Europe (GZLP01) or
+Japan (GZLJ01), revision 0, as an uncompressed .iso (not RVZ, GCZ, CISO or NKit; Dolphin can convert:
+right-click > Convert File)."
 fi
 game_id=$(head -c 6 "$disc")
 nro=switchwaker.nro built=$root/build/switch-native entry=SwitchWaker
 if [[ $game_id == GZLP01 ]]; then
     nro=switchwaker-eur.nro built=$root/build/switch-native-eur entry="SwitchWaker EUR"
+elif [[ $game_id == GZLJ01 ]]; then
+    nro=switchwaker-jpn.nro built=$root/build/switch-native-jpn entry="SwitchWaker JPN"
 fi
 
 step 2 "building the Switch homebrew (an hour or more the first time, minutes later)"
@@ -72,8 +75,8 @@ for f in "$nro" initial_pipeline_cache.db initial_dksh_cache.bin; do
 done
 cp "$built/$nro" "$dst/switchwaker.nro"
 for f in initial_pipeline_cache.db initial_dksh_cache.bin; do cp "$built/$f" "$dst/$f"; done
-# the other region's NRO from an earlier layout (switch/switchwaker-eur/) is not made any more
-rm -rf "$out/switch/switchwaker-eur"
+# the other regions' NROs from an earlier layout (switch/switchwaker-eur/, -jpn/) are not made any more
+rm -rf "$out/switch/switchwaker-eur" "$out/switch/switchwaker-jpn"
 if [[ $copy_disc == 1 ]]; then
     echo "  copying the disc ($(du -h "$disc" | cut -f1))"
     cp "$disc" "$dst/$game_id.iso"

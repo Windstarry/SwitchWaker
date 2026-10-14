@@ -4,7 +4,7 @@
 include_guard(GLOBAL)
 
 # GZLE01 is VERSIONS.index("GZLE01") == 2 (VERSION_USA) in the decomp's configure.py. The supported
-# builds: 2 (USA, the reference) and 3 (Europe, GZLP01: docs/PAL_DISC_PLAN.md).
+# builds: 2 (USA, the reference), 3 (Europe, GZLP01: docs/PAL_DISC_PLAN.md) and 1 (Japan, GZLJ01).
 set(COS_VERSION 2 CACHE STRING "Game version: 0 D44J01, 1 GZLJ01, 2 GZLE01, 3 GZLP01")
 set(_cos_game_ids D44J01 GZLJ01 GZLE01 GZLP01)
 if (NOT COS_VERSION MATCHES "^[0-3]$")

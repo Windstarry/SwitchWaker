@@ -492,9 +492,13 @@ void prepareRunCard(const char* who) {
     } else {
         snprintf(sCardBase, sizeof(sCardBase), "%s/card/", gConfig.runDir);
     }
-    // Aurora's card folder per region (lib/dolphin/card.cpp): USA, EUR for the European build
+    // Aurora's card folder per region (lib/dolphin/card.cpp get_card_region): USA, EUR for the
+    // European build, JAP for the Japanese one, by the disc name's fourth character.
+    const char* region = COS_GAME_ID_STR[3] == 'P' ? "EUR"
+                                                    : COS_GAME_ID_STR[3] == 'J' ? "JAP"
+                                                                               : "USA";
     snprintf(sGciPath, sizeof(sGciPath), "%s%s/Card A/01-%.4s-%s.gci", sCardBase,
-             COS_GAME_ID_STR[3] == 'P' ? "EUR" : "USA", COS_GAME_ID_STR, kSaveFile);
+             region, COS_GAME_ID_STR, kSaveFile);
     CARDSetBasePath(sCardBase, 0);
     writef(STDERR_FILENO, "[cos] %s: memory card A is the folder %s%s\n", who, sCardBase,
            cardDir != nullptr && cardDir[0] != '\0' ? " (COS_CARD_DIR)" : " (empty at start)");

@@ -7,9 +7,10 @@ log says '[switch] debug server listening on <ip>:6543'. The console's address: 
   switchwaker_debug.py info                      build, frame, stage, memory, address
   switchwaker_debug.py log [--all] [--save F] [--grep RE] [--seconds N]
                                                  the log as it is written (Ctrl-C ends it)
-  switchwaker_debug.py deploy [NRO] [--eur] [--force] [--no-reload] [--nro-only]
+  switchwaker_debug.py deploy [NRO] [--eur] [--jpn] [--force] [--no-reload] [--nro-only]
                                                  upload the NRO (default build/switch-native/switchwaker.nro;
-                                                 --eur: build/switch-native-eur/switchwaker-eur.nro) as
+                                                 --eur: build/switch-native-eur/switchwaker-eur.nro;
+                                                 --jpn: build/switch-native-jpn/switchwaker-jpn.nro) as
                                                  switchwaker.nro, and the caches built next to it,
                                                  check it, restart; refused when the running game's
                                                  region differs (--force)
@@ -47,13 +48,15 @@ ENV_PORT = "SWITCHWAKER_DEBUG_PORT"
 DEFAULT_NRO = REPO / "build" / "switch-native" / "switchwaker.nro"
 BUILD_HINT = "scripts/switch/build_native.sh"
 REMOTE_NRO = "switchwaker.nro"          # relative to the server's root, sdmc:/switch/switchwaker
-# The European NRO (deploy --eur): installed as REMOTE_NRO too (one region per SD card; the HOME-menu
-# forwarder starts either). The disc each build runs, as info's "game" line names it. None where there
-# is no such build.
+# The European NRO (deploy --eur) and the Japanese one (deploy --jpn): installed as REMOTE_NRO too (one
+# region per SD card; the HOME-menu forwarder starts any). The disc each build runs, as info's "game"
+# line names it. None where there is no such build.
 DEFAULT_NRO_EUR = REPO / "build" / "switch-native-eur" / "switchwaker-eur.nro"
+DEFAULT_NRO_JPN = REPO / "build" / "switch-native-jpn" / "switchwaker-jpn.nro"
 GAME_USA, GAME_EUR = "GZLE01", "GZLP01"
+GAME_JPN = "GZLJ01"
 REMOTE_LOGS = "native/logs"
-SESSION_LOG = r"switchwaker(?:_gl|_dk|-eur)?_\d{4}-\d\d-\d\d_\d\d-\d\d-\d\d\.log"
+SESSION_LOG = r"switchwaker(?:_gl|_dk|-eur|-jpn)?_\d{4}-\d\d-\d\d_\d\d-\d\d-\d\d\.log"
 
 
 class ServerError(Exception):
@@ -254,12 +257,11 @@ def wait_server(args, seconds):
     return False
 
 
-def region_guard(args, eur):
-    """The NRO replaces the running one at the same path: one of the other region would not start with the
-    console's disc (a USA console's GZLE01.iso, a European build). Refused unless --force."""
-    if GAME_EUR is None:
+def region_guard(args, want):
+    """The NRO replaces the running one at the same path: one of the other regions would not start with the
+    console's disc (a USA console's GZLE01.iso, a European or Japanese build). Refused unless --force."""
+    if want is None:
         return
-    want = GAME_EUR if eur else GAME_USA
     m = re.search(r"^game (\S+)", args.info or "", re.M)
     if m is None:
         print(f"note: the running build does not say its game (older than info's game line): "
@@ -268,17 +270,29 @@ def region_guard(args, eur):
     if m.group(1) != want and not args.force:
         sys.exit(f"the console runs the {m.group(1)} build, this NRO is the {want} one: it would replace "
                  f"switchwaker.nro with the other region's, which does not run with the console's disc. "
-                 f"Nothing sent ({'without --eur' if eur else '--eur'} for the {m.group(1)} build, or --force).")
+                 f"Nothing sent (deploy the {m.group(1)} build, or --force).")
 
 
 def cmd_deploy(args):
+    # the region: --eur / --jpn, its NRO's -eur/-jpn suffix, or the USA build by default
     eur = args.eur or (DEFAULT_NRO_EUR is not None and args.nro is not None and args.nro.endswith("-eur.nro"))
+    jpn = args.jpn or (DEFAULT_NRO_JPN is not None and args.nro is not None and args.nro.endswith("-jpn.nro"))
+    if eur and jpn:
+        sys.exit("--eur and --jpn: pick one region")
     if eur and DEFAULT_NRO_EUR is None:
         sys.exit("--eur: this port has no European build")
-    nro = Path(args.nro or (DEFAULT_NRO_EUR if eur else DEFAULT_NRO))
+    if jpn and DEFAULT_NRO_JPN is None:
+        sys.exit("--jpn: this port has no Japanese build")
+    if eur:
+        default_nro, want, flag = DEFAULT_NRO_EUR, GAME_EUR, " --eur"
+    elif jpn:
+        default_nro, want, flag = DEFAULT_NRO_JPN, GAME_JPN, " --jpn"
+    else:
+        default_nro, want, flag = DEFAULT_NRO, GAME_USA, ""
+    nro = Path(args.nro or default_nro)
     if not nro.exists():
-        sys.exit(f"{nro} does not exist ({BUILD_HINT}{' --eur' if eur else ''} builds it)")
-    region_guard(args, eur)
+        sys.exit(f"{nro} does not exist ({BUILD_HINT}{flag} builds it)")
+    region_guard(args, want)
     c = connect(args)
     try:
         # the European build too goes in as switchwaker.nro (the forwarder's path)
@@ -395,6 +409,9 @@ def main():
     sp.add_argument("--eur", action="store_true",
                     help=f"the European NRO ({DEFAULT_NRO_EUR.relative_to(REPO)}), also as {REMOTE_NRO}; "
                          "also when NRO ends in -eur.nro")
+    sp.add_argument("--jpn", action="store_true",
+                    help=f"the Japanese NRO ({DEFAULT_NRO_JPN.relative_to(REPO)}), also as {REMOTE_NRO}; "
+                         "also when NRO ends in -jpn.nro")
     sp.add_argument("--force", action="store_true",
                     help="deploy even when the running game is the other region's build")
     sp.add_argument("--no-reload", action="store_true")

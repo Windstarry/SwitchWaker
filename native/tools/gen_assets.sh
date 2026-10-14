@@ -5,7 +5,7 @@
 #   native/tools/gen_assets.sh [--version ID] [--disc PATH] [--decomp DIR] [--out DIR] [--res-only | --stubs]
 #
 #   --version ID   the disc: GZLE01 (USA, the default) or GZLP01 (Europe, a COS_VERSION=3 build;
-#                  docs/PAL_DISC_PLAN.md)
+#                  docs/PAL_DISC_PLAN.md), or GZLJ01 (Japan, a COS_VERSION=1 build)
 #   --disc PATH    that disc's revision 0 image (default: $COS_DISC)
 #   --decomp DIR   where the decompilation is checked out and run (default: build/decomp)
 #   --out DIR      where the headers go (default: build/native-mac/assets/<ID>, the default
@@ -59,8 +59,8 @@ while [ $# -gt 0 ]; do
     esac
 done
 case "$version" in
-    GZLE01|GZLP01) ;;
-    *) echo "gen_assets: --version $version: GZLE01 or GZLP01" >&2; exit 2 ;;
+    GZLE01|GZLP01|GZLJ01) ;;
+    *) echo "gen_assets: --version $version: GZLE01, GZLP01 or GZLJ01" >&2; exit 2 ;;
 esac
 [ -n "$out" ] || out="$repo/build/native-mac/assets/$version"
 

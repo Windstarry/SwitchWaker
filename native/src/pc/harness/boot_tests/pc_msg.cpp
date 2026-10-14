@@ -387,10 +387,17 @@ void checkFopMsgM(const RawBmg& raw, mesg_header* header, bool secondFile, const
         seen[number] = 1;
         r.distinct++;
 
+#if VERSION >= VERSION_USA
         if (fopMsgM_hyrule_language_check(number) != secondFile) {
             r.elsewhere++;
             continue;
         }
+#else
+        // Japan has no hyrule language check: fopMsgM_msgGet_c::getMesgHeader routes a message to its
+        // group file (zel_%02d.bmg, from the number's high half) inside the single message archive, so
+        // there is no cross-file classification to make here (f_op_msg_mng.cpp, VERSION <= VERSION_JPN).
+        (void)secondFile;
+#endif
         fopMsgM_msgGet_c msgGet;
         mesg_header* h = msgGet.getMesgHeader(number);
         const char* text = h == header ? msgGet.getMessage(h) : nullptr;
@@ -489,23 +496,41 @@ void checkFont(JUTFont* font, JKRArchive* arc, const char* name, const char* pat
 
 [[noreturn]] void smokeMsgSweep() {
     uint64_t start = elapsedMs();
+#if VERSION > VERSION_JPN
     JKRArchive* msg2Arc = mountMem("/res/Msg/bmgresh.arc");
+#endif
     JKRArchive* fontArc = mountMem("/res/Msg/fontres.arc");
     JKRArchive* rubyArc = mountMem("/res/Msg/rubyres.arc");
-    if (msg2Arc == nullptr || fontArc == nullptr || rubyArc == nullptr) {
+    if (fontArc == nullptr || rubyArc == nullptr
+#if VERSION > VERSION_JPN
+            || msg2Arc == nullptr
+#endif
+    ) {
         pc_exit(PC_EXIT_CHECK_FAILED);
     }
+#if VERSION > VERSION_JPN
     // As d_s_logo's phase_2 (the ruby archive is found by getGlbResource's search there too).
     dComIfGp_setMsgDt2Archive(msg2Arc);
+#else
+    // Japan has one message archive and no second msg-dt archive (f_op_msg_mng.cpp,
+    // VERSION <= VERSION_JPN: zel_%02d.bmg out of dComIfGp_getMsgDtArchive).
+#endif
     dComIfGp_setFontArchive(fontArc);
 
     // The player name fopMsgM_messageGet inserts; a fresh save has none.
     g_dComIfG_gameInfo.save.getPlayer().getPlayerInfo().setPlayerName("Link");
     const char* playerName = dComIfGs_getPlayerName();
+#if VERSION > VERSION_JPN
     if (dComIfGs_getPalLanguage() != 0 || dComIfGs_getClearCount() != 0) {
         fail("save", "PAL language %u, clear count %u: the sweep expects a fresh save",
              dComIfGs_getPalLanguage(), dComIfGs_getClearCount());
     }
+#else
+    // Japan has no PAL language to reset (dComIfGs_getPalLanguage is USA/PAL only).
+    if (dComIfGs_getClearCount() != 0) {
+        fail("save", "clear count %u: the sweep expects a fresh save", dComIfGs_getClearCount());
+    }
+#endif
 
     int fd = openRunFile("msg_sweep.txt");
     if (fd >= 0) {
@@ -545,7 +570,11 @@ void checkFont(JUTFont* font, JKRArchive* arc, const char* name, const char* pat
             bool kingdom;
         } files[] = {
             {msgArc, "zel_00.bmg", bmgPath, false},
+#if VERSION > VERSION_JPN
+            // The USA and PAL discs keep the hyrule text in a second archive, bmgresh.arc
+            // (zel_01.bmg); Japan's single archive is swept with its zel_00.bmg only.
             {msg2Arc, "zel_01.bmg", "/res/Msg/bmgresh.arc:zel_01.bmg", true},
+#endif
         };
         constexpr int kFiles = sizeof(files) / sizeof(files[0]);
         RawBmg raw[kFiles];
@@ -564,8 +593,12 @@ void checkFont(JUTFont* font, JKRArchive* arc, const char* name, const char* pat
                 fail(files[k].path, "JMessage::TParse::parse failed");
             }
         }
-        allOk = allOk && ok[0] && ok[1];
-        if (ok[0] && ok[1]) {
+        bool filesOk = true;
+        for (int k = 0; k < kFiles; k++) {
+            filesOk = filesOk && ok[k];
+        }
+        allOk = allOk && filesOk;
+        if (filesOk) {
             checkJMessage(*container, raw, kFiles, processed);
         }
         for (int k = 0; k < kFiles; k++) {

@@ -3,8 +3,9 @@
  *
  * The game version is fixed at compile time (VERSION, native/cmake/GameConfig.cmake): the USA build
  * (COS_VERSION=2, the reference) runs only from GZLE01 revision 0, the European build
- * (COS_VERSION=3) only from GZLP01 revision 0. GameConfig.cmake defines COS_GAME_ID_STR for every
- * unit that links cos_game_headers; the Switch platform layer gets the same define
+ * (COS_VERSION=3) only from GZLP01 revision 0, and the Japanese build (COS_VERSION=1) only from
+ * GZLJ01 revision 0. GameConfig.cmake defines COS_GAME_ID_STR for every unit that links
+ * cos_game_headers; the Switch platform layer gets the same define
  * (switch/native/CMakeLists.txt). Plain C, so cos_switch.h can include it.
  */
 #ifndef PC_GAME_ID_H
@@ -14,17 +15,21 @@
 #define COS_GAME_ID_STR "GZLE01"
 #endif
 
-/* The other supported disc, for the message that names the right build. */
+/* The other supported discs, for the message that names the right build. */
 #define PC_GAME_ID_USA "GZLE01"
 #define PC_GAME_ID_EUR "GZLP01"
+#define PC_GAME_ID_JPN "GZLJ01"
 
 /* The disc's region as the messages name it, the expected image's file name, the build's NRO. */
+#define PC_GAME_IS_USA (COS_GAME_ID_STR[3] == 'E')
 #define PC_GAME_IS_EUR (COS_GAME_ID_STR[3] == 'P')
-#define PC_GAME_REGION_EN (PC_GAME_IS_EUR ? "Europe" : "USA")
-#define PC_GAME_REGION_ES (PC_GAME_IS_EUR ? "Europa" : "EE. UU.")
+#define PC_GAME_IS_JPN (COS_GAME_ID_STR[3] == 'J')
+#define PC_GAME_REGION_EN (PC_GAME_IS_JPN ? "Japan" : (PC_GAME_IS_EUR ? "Europe" : "USA"))
+#define PC_GAME_REGION_ES (PC_GAME_IS_JPN ? "Jap\u00f3n" : (PC_GAME_IS_EUR ? "Europa" : "EE. UU."))
 #define PC_GAME_ISO_NAME COS_GAME_ID_STR ".iso"
 #define PC_GAME_NRO_USA "switchwaker.nro"
 #define PC_GAME_NRO_EUR "switchwaker-eur.nro"
+#define PC_GAME_NRO_JPN "switchwaker-jpn.nro"
 
 /* What the player sees on the Switch (INSTALL.md): each build's Homebrew Menu entry (its NACP name,
  * switch/native/CMakeLists.txt) and the end of its release download's name
@@ -34,7 +39,9 @@
  * build machine (PC_GAME_NRO_EUR, its .elf and log names). */
 #define PC_GAME_ENTRY_USA "SwitchWaker"
 #define PC_GAME_ENTRY_EUR "SwitchWaker EUR"
+#define PC_GAME_ENTRY_JPN "SwitchWaker JPN"
 #define PC_GAME_ZIP_USA "-switch.zip"
 #define PC_GAME_ZIP_EUR "-switch-eur.zip"
+#define PC_GAME_ZIP_JPN "-switch-jpn.zip"
 
 #endif /* PC_GAME_ID_H */

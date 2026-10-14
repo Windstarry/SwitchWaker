@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Stub asset headers for COS_RUNTIME_ASSETS builds (docs/RUNTIME_ASSETS.md, "Proposal" step 1).
 
-    native/tools/gen_asset_stubs.py --decomp build/decomp [--version GZLE01|GZLP01] --out DIR
+    native/tools/gen_asset_stubs.py --decomp build/decomp [--version GZLE01|GZLP01|GZLJ01] --out DIR
 
 The game includes 163 "assets/*.h" headers that the decompilation's asset step cuts out of the
 player's main.dol and RELs (gen_assets.sh). This writes headers with the same names, declarations,
@@ -118,8 +118,8 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--decomp", required=True, type=Path)
     ap.add_argument("--out", required=True, type=Path)
-    ap.add_argument("--version", default="GZLE01", choices=("GZLE01", "GZLP01"),
-                    help="the disc whose config.yml is read (GZLP01: docs/PAL_DISC_PLAN.md)")
+    ap.add_argument("--version", default="GZLE01", choices=("GZLE01", "GZLP01", "GZLJ01"),
+                    help="the disc whose config.yml is read (GZLP01/GZLJ01: docs/PAL_DISC_PLAN.md)")
     args = ap.parse_args()
     d = args.decomp
     cfg = yaml.safe_load((d / f"config/{args.version}/config.yml").read_text())

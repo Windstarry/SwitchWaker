@@ -54,6 +54,13 @@ constexpr PlayerBuild kUsaBuild{PC_GAME_ID_USA, PC_GAME_ID_USA ".iso", "the USA 
 constexpr PlayerBuild kEurBuild{PC_GAME_ID_EUR, PC_GAME_ID_EUR ".iso", "the European disc", "el disco europeo",
                                 "the European version", "la versi\u00f3n europea", PC_GAME_ENTRY_EUR,
                                 PC_GAME_ZIP_EUR, "Europe", "Europa"};
+constexpr PlayerBuild kJpnBuild{PC_GAME_ID_JPN, PC_GAME_ID_JPN ".iso", "the Japanese disc", "el disco japon\u00e9s",
+                                "the Japanese version", "la versi\u00f3n japonesa", PC_GAME_ENTRY_JPN,
+                                PC_GAME_ZIP_JPN, "Japan", "Jap\u00f3n"};
+
+// The build of the disc that is there, when it is not this build's (checkDisc sets it): the message
+// must name it, "the other build" is no longer unique with three regions.
+const PlayerBuild* sOtherRegionBuild = nullptr;
 
 // The disc folder: COS_SWITCH_DEFAULT_DISC without its file name.
 constexpr const char kDiscDir[] = "sdmc:/switch/switchwaker/";
@@ -62,12 +69,23 @@ constexpr const char kDiscDir[] = "sdmc:/switch/switchwaker/";
 // at this build's path, say which version this switchwaker.nro is and which download replaces it.
 // English, then Spanish.
 void playerMessage(char* text, size_t size) {
-    const PlayerBuild& self = PC_GAME_IS_EUR ? kEurBuild : kUsaBuild;
-    const PlayerBuild& other = PC_GAME_IS_EUR ? kUsaBuild : kEurBuild;
+    const PlayerBuild& self = PC_GAME_IS_JPN ? kJpnBuild : (PC_GAME_IS_EUR ? kEurBuild : kUsaBuild);
     struct stat st;
-    const bool otherInFolder =
-        sDiscMissing && stat((std::string("/switch/switchwaker/") + other.iso).c_str(), &st) == 0;
-    if (otherInFolder) {
+    // Another region's disc sitting in the folder, when this build's own image is not there.
+    const PlayerBuild* inFolder = nullptr;
+    if (sDiscMissing) {
+        for (const PlayerBuild* candidate : {&kUsaBuild, &kEurBuild, &kJpnBuild}) {
+            if (candidate->id == self.id) {
+                continue;
+            }
+            if (stat((std::string("/switch/switchwaker/") + candidate->iso).c_str(), &st) == 0) {
+                inFolder = candidate;
+                break;
+            }
+        }
+    }
+    if (inFolder != nullptr) {
+        const PlayerBuild& other = *inFolder;
         snprintf(text, size,
                  "This switchwaker.nro is %s (%s), for %s (%s), but %s holds %s (%s). For that disc, download "
                  "the release file whose name ends in \"%s\" (%s) and replace switchwaker.nro with the one "
@@ -80,7 +98,8 @@ void playerMessage(char* text, size_t size) {
                  other.discEs, other.zip, other.regionEs);
         return;
     }
-    if (sOtherRegionDisc) {
+    if (sOtherRegionDisc && sOtherRegionBuild != nullptr) {
+        const PlayerBuild& other = *sOtherRegionBuild;
         snprintf(text, size,
                  "%s%s is %s (%s), and this switchwaker.nro is %s (%s). For %s, rename the file to %s, "
                  "download the release file whose name ends in \"%s\" (%s) and replace switchwaker.nro with "
@@ -171,11 +190,16 @@ int checkDisc() {
         // the other region's disc: name the build that runs it
         const bool usa = strcmp(id, PC_GAME_ID_USA) == 0 && version == 0;
         const bool eur = strcmp(id, PC_GAME_ID_EUR) == 0 && version == 0;
-        if (usa || eur) {
+        const bool jpn = strcmp(id, PC_GAME_ID_JPN) == 0 && version == 0;
+        if (usa || eur || jpn) {
             sOtherRegionDisc = true;
+#if defined(__SWITCH__)
+            sOtherRegionBuild = usa ? &kUsaBuild : (eur ? &kEurBuild : &kJpnBuild);
+#endif
+            const char* otherRegion = usa ? "USA" : (eur ? "European" : "Japanese");
             discMessage("%s is %s revision 0, the %s disc: it runs with the %s build (%s); this build is for %s",
-                        path, id, usa ? "USA" : "European", usa ? "USA" : "European",
-                        usa ? PC_GAME_NRO_USA : PC_GAME_NRO_EUR, COS_GAME_ID_STR);
+                        path, id, otherRegion, otherRegion,
+                        usa ? PC_GAME_NRO_USA : (eur ? PC_GAME_NRO_EUR : PC_GAME_NRO_JPN), COS_GAME_ID_STR);
         } else {
             discMessage("%s is %s revision %u; the supported disc is %s revision 0", path, id, version,
                         COS_GAME_ID_STR);

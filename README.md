@@ -3,7 +3,8 @@
 ## What it is
 
 SwitchWaker is an unofficial native port of a 2002 GameCube adventure game (disc ID `GZLE01`, USA,
-revision 0, the reference; and `GZLP01`, Europe, revision 0, with its five languages) to the Mac,
+revision 0, the reference; `GZLP01`, Europe, revision 0, with its five languages; and `GZLJ01`,
+Japan, revision 0) to the Mac,
 Linux and the Switch (homebrew). The game is compiled from its decompilation
 (the [`game/`](game/README.md) folder) and drawn with [Aurora](https://github.com/encounter/aurora);
 there is no CPU emulation.
@@ -62,9 +63,9 @@ Be aware of this before you use or build on this repository:
 
 ## What you need
 
-- **Your own legally obtained copy of the disc**: `GZLE01` (USA) or `GZLP01` (Europe) revision 0, as
-  an uncompressed `.iso`. The build generates what it needs from it. The version is fixed at build
-  time: the European disc needs the European build (below).
+- **Your own legally obtained copy of the disc**: `GZLE01` (USA), `GZLP01` (Europe) or `GZLJ01`
+  (Japan) revision 0, as an uncompressed `.iso`. The build generates what it needs from it. The
+  version is fixed at build time: the European or Japanese disc needs its own build (below).
 - **This repository contains no game assets, executables or data.** The binaries you build contain
   code generated from your disc: they are for your own use only; do not share them.
 - **No release binaries are provided** for now, precisely because they carry headers generated
@@ -99,6 +100,18 @@ cmake -S native -B build/native-mac-eur -G Ninja -DCOS_VERSION=3 \
     -DCOS_ASSETS_DIR=$PWD/build/native-mac/assets/GZLP01
 ninja -C build/native-mac-eur switchwaker
 COS_BUILD_DIR=build/native-mac-eur native/tools/regress.sh   # the tools take the build directory
+```
+
+**The Japanese disc** (`GZLJ01`) is a separate build directory with `-DCOS_VERSION=1`
+([docs/JPN_DISC_PLAN.md](docs/JPN_DISC_PLAN.md)); it has a single language, as the USA disc:
+
+```sh
+export COS_DISC=/path/to/GZLJ01.iso
+native/tools/gen_assets.sh --version GZLJ01   # build/native-mac/assets/GZLJ01
+cmake -S native -B build/native-mac-jpn -G Ninja -DCOS_VERSION=1 \
+    -DCOS_ASSETS_DIR=$PWD/build/native-mac/assets/GZLJ01
+ninja -C build/native-mac-jpn switchwaker
+COS_BUILD_DIR=build/native-mac-jpn native/tools/regress.sh   # the tools take the build directory
 ```
 
 ## Build on Linux (x86_64 or aarch64)
@@ -149,13 +162,15 @@ copied into an image.
 scripts/docker/build.sh linux  --disc /path/to/GZLE01.iso   # build/native-linux/switchwaker
 scripts/docker/build.sh switch --disc /path/to/GZLE01.iso   # build/switch-native/switchwaker.nro
 scripts/docker/build.sh switch --disc /path/to/GZLP01.iso   # build/switch-native-eur/switchwaker-eur.nro
+scripts/docker/build.sh switch --disc /path/to/GZLJ01.iso   # build/switch-native-jpn/switchwaker-jpn.nro
 scripts/docker/build.sh all    --disc /path/to/GZLE01.iso --test   # both, plus headless checks
 ```
 
 The Linux binary is built for the container's architecture, which is the host's (x86_64 on a PC,
 aarch64 on Apple silicon); `--platform linux/amd64` builds the other one under emulation. The disc
-decides the version (GZLP01: `build/native-linux-eur`, `build/switch-native-eur`). The asset
-headers are generated once into `build/assets/GZLE01` (`build/assets/GZLP01`). Downloads stay between runs in the
+decides the version (GZLP01: `build/native-linux-eur`, `build/switch-native-eur`; GZLJ01:
+`build/native-linux-jpn`, `build/switch-native-jpn`). The asset headers are generated once into
+`build/assets/GZLE01` (`build/assets/GZLP01`, `build/assets/GZLJ01`). Downloads stay between runs in the
 repository's ignored `build/` and `ref/` folders (Aurora and its packages in
 `build/native-linux/_deps`, the decompilation and its tools in `build/decomp-docker`, RecompCore in
 `ref/recompcore`, Dawn's sources in `build/switch-native/_deps`)
@@ -184,14 +199,17 @@ build still compiles the headers generated from your disc.
 **Players do not need to build**: the release downloads hold the NRO (built without the disc) and its
 caches, one download per disc: `SwitchWaker-<version>-switch.zip` (USA, `switchwaker.nro`) and
 `SwitchWaker-<version>-switch-eur.zip` (Europe), both installing `switch/switchwaker/switchwaker.nro`
-(one version per SD card); players add their own disc ([INSTALL.md](INSTALL.md)). To build it yourself,
+(one version per SD card); players add their own disc ([INSTALL.md](INSTALL.md)). The Japanese build
+has no release download yet. To build it yourself,
 `scripts/switch/make_sd.sh --disc /path/to/GZLE01.iso` checks the disc, builds the NRO in containers and
 lays out `build/sd/switch/` (NRO, caches, a copy of the disc) for the SD card.
 
 On top of the above: Docker Desktop or Podman. `scripts/switch/build_native.sh` produces
 `build/switch-native/switchwaker.nro` (the deko3d renderer; Dawn, Aurora and the shader cache are built in
 a devkitPro container; `--runtime-assets` builds it without the disc; `--eur` builds
-`build/switch-native-eur/switchwaker-eur.nro`, the European version).
+`build/switch-native-eur/switchwaker-eur.nro`, the European version; `--jpn` builds
+`build/switch-native-jpn/switchwaker-jpn.nro`, the Japanese version (wiring only, not built or tested
+yet).
 Full guide: [docs/SWITCH_BUILD.md](docs/SWITCH_BUILD.md).
 
 ### Debug server (developers)
@@ -211,8 +229,8 @@ scripts/switch/switchwaker_debug.py press A                                  # a
 ```
 
 `deploy` restarts the game, so start it from the HOME-screen icon (forwarder). `deploy --eur` uploads the
-European NRO as `switchwaker.nro` too; `deploy` refuses to replace the running game with the other region's
-build unless `--force`. Every command and the
+European NRO as `switchwaker.nro` too, and `deploy --jpn` the Japanese one; `deploy` refuses to replace the
+running game with the other region's build unless `--force`. Every command and the
 protocol: [docs/DEBUG_SERVER.md](docs/DEBUG_SERVER.md). It is the same server as SwitchWakerHD's.
 
 ## Install on the Switch
@@ -224,9 +242,9 @@ protocol: [docs/DEBUG_SERVER.md](docs/DEBUG_SERVER.md). It is the same server as
   `initial_pipeline_cache.db`, `initial_dksh_cache.bin`; `SwitchWaker-<version>-switch-eur.zip` for
   Europe: the European `switchwaker.nro` and the same two caches), or the same files from your own build
   (`build/switch-native/`, or `build/switch-native-eur/` whose `switchwaker-eur.nro` goes on the card as
-  `switchwaker.nro`).
-- Your disc as an **uncompressed** `.iso` (not RVZ, GCZ, CISO or NKit), renamed to `GZLE01.iso` (USA) or
-  `GZLP01.iso` (Europe).
+  `switchwaker.nro`). The Japanese build (`build/switch-native-jpn/`) has no release download yet.
+- Your disc as an **uncompressed** `.iso` (not RVZ, GCZ, CISO or NKit), renamed to `GZLE01.iso` (USA),
+  `GZLP01.iso` (Europe) or `GZLJ01.iso` (Japan).
 - About 1.6 GB free on the SD card (the disc is 1.4 GB; the shader caches grow to a few dozen MB).
 
 ### Copy the files
@@ -235,8 +253,8 @@ The SD card must end up like this (folder and file names exactly as shown):
 
 ```
 sdmc:/switch/switchwaker/
-├── switchwaker.nro                the game, the USA or the European version (one per card)
-├── GZLE01.iso                     your disc (GZLP01.iso: the European one)
+├── switchwaker.nro                the game, the USA, European or Japanese version (one per card)
+├── GZLE01.iso                     your disc (GZLP01.iso: the European one; GZLJ01.iso: the Japanese one)
 ├── initial_pipeline_cache.db      the list of graphics pipelines the game uses
 ├── initial_dksh_cache.bin         their shaders, compiled for the Switch's GPU
 └── native/                        created by the game: logs, saves, settings, caches
@@ -248,7 +266,8 @@ Either way works:
   *Tools → USB Tools → SD Card* or similar) and copy the four files into `switch/switchwaker/`.
 - **Over USB (MTP)**, from the repository: `scripts/switch/push.sh --disc /path/to/GZLE01.iso`
   once (named after the disc's ID), then `scripts/switch/push.sh native` (the NRO and its caches;
-  `native-eur` for the European build, pushed as `switchwaker.nro`) after every build.
+  `native-eur` for the European build, `native-jpn` for the Japanese one, pushed as `switchwaker.nro`)
+  after every build.
   Every file is read back and checked. Needs `brew install libmtp` and USB file transfer enabled on
   the console (DBI, haze or similar). Details: [docs/SWITCH_BUILD.md](docs/SWITCH_BUILD.md).
 
@@ -258,8 +277,8 @@ the first time it is needed (its draws skipped meanwhile), and the first hours s
 ### Start the game
 
 - Open the Homebrew Menu **in title mode**: hold **R** while starting any installed game, then pick
-  **SwitchWaker** (**SwitchWaker EUR**: the European version). Opened from the album (applet mode)
-  the game has far too little memory and will not run properly.
+  **SwitchWaker** (**SwitchWaker EUR**: the European version; **SwitchWaker JPN**: the Japanese one).
+  Opened from the album (applet mode) the game has far too little memory and will not run properly.
 - Or install the HOME-screen icon (forwarder), which always starts it in title mode:
   build it with `scripts/switch/build_forwarder.sh` and install `switchwaker_forwarder.nsp` with
   DBI ([switch/forwarder/INSTALL.md](switch/forwarder/INSTALL.md)). It starts `switchwaker.nro`, whichever

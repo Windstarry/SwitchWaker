@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Build the native port (native/: the decompiled game on Aurora) as a Switch NRO.
 #
-#   scripts/switch/build_native.sh [--eur] [--dk-debug-lib] [--aurora DIR] [--assets DIR | --runtime-assets]
+#   scripts/switch/build_native.sh [--eur | --jpn] [--dk-debug-lib] [--aurora DIR] [--assets DIR | --runtime-assets]
 #                                  [--recompcore DIR] [--dawn-src DIR] [--jobs N] [--target TARGET]
 #                                  [--build-dir DIR]
 #
@@ -20,9 +20,14 @@
 # build/switch-native-eur/switchwaker-eur.nro, "SwitchWaker EUR" in the Homebrew Menu, installed as
 # sdmc:/switch/switchwaker/switchwaker.nro like the USA one (one region per SD card; the release zip,
 # make_sd.sh, push.sh and the debug client rename it), which reads sdmc:/switch/switchwaker/GZLP01.iso.
-# Without it: the USA version (GZLE01), as always.
+# --jpn builds the Japanese version (COS_VERSION=1, the GZLJ01 disc; docs/JPN_DISC_PLAN.md):
+# build/switch-native-jpn/switchwaker-jpn.nro, "SwitchWaker JPN" in the Homebrew Menu, installed as
+# sdmc:/switch/switchwaker/switchwaker.nro like the others (the release zip, make_sd.sh, push.sh and the
+# debug client rename it), which reads sdmc:/switch/switchwaker/GZLJ01.iso.
+# Without either: the USA version (GZLE01), as always.
 # --build-dir DIR   the build directory, relative to the checkout (default build/switch-native, or
-#                   build/switch-native-eur with --eur); it is mounted where the container's CMake
+#                   build/switch-native-eur with --eur, build/switch-native-jpn with --jpn); it is
+#                   mounted where the container's CMake
 #                   cache expects build/switch-native, so a copy of another build directory (cp -c on
 #                   APFS) reuses its objects.
 #
@@ -67,6 +72,7 @@ jobs=${SWITCH_BUILD_JOBS:-4}
 while [[ $# -gt 0 ]]; do
     case $1 in
         --eur) game_id=GZLP01; cos_version=3; shift ;;
+        --jpn) game_id=GZLJ01; cos_version=1; shift ;;
         --build-dir) build_dir=$2; shift 2 ;;
         --dk-debug-lib) dk_debug=ON; shift ;;
         --aurora) aurora=$2; shift 2 ;;
@@ -83,9 +89,11 @@ done
 
 nro_name=switchwaker
 [[ $game_id == GZLP01 ]] && nro_name=switchwaker-eur
+[[ $game_id == GZLJ01 ]] && nro_name=switchwaker-jpn
 if [[ -z $build_dir ]]; then
     build_dir=build/switch-native
     [[ $game_id == GZLP01 ]] && build_dir=build/switch-native-eur
+    [[ $game_id == GZLJ01 ]] && build_dir=build/switch-native-jpn
 fi
 mkdir -p "$root/$build_dir"
 

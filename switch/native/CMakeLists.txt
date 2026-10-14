@@ -360,10 +360,12 @@ if (COS_DK_DEBUG_LIB)
 else ()
     set(_nacp_name "SwitchWaker")
 endif ()
-# the European build (COS_VERSION=3, GZLP01: docs/PAL_DISC_PLAN.md), next to the USA one in the
-# Homebrew Menu
+# the European build (COS_VERSION=3, GZLP01: docs/PAL_DISC_PLAN.md) and the Japanese build
+# (COS_VERSION=1, GZLJ01: docs/JPN_DISC_PLAN.md), next to the USA one in the Homebrew Menu
 if (COS_GAME_ID STREQUAL "GZLP01")
     string(REPLACE "SwitchWaker" "SwitchWaker EUR" _nacp_name "${_nacp_name}")
+elseif (COS_GAME_ID STREQUAL "GZLJ01")
+    string(REPLACE "SwitchWaker" "SwitchWaker JPN" _nacp_name "${_nacp_name}")
 endif ()
 nx_generate_nacp(cos_native.nacp
         NAME "${_nacp_name}" AUTHOR "SwitchWaker contributors" VERSION "${COS_SWITCH_VERSION}")

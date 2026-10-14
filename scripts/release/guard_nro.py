@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Refuse to publish a game binary that carries the disc's data arrays (docs/RUNTIME_ASSETS.md).
 
-    scripts/release/guard_nro.py BINARY... [--decomp build/decomp] [--version GZLE01|GZLP01]
+    scripts/release/guard_nro.py BINARY... [--decomp build/decomp] [--version GZLE01|GZLP01|GZLJ01]
 
 A binary built with COS_RUNTIME_ASSETS=ON holds none of the 163 arrays (167 for GZLP01, the European
-build) the decompilation cuts out of main.dol and the RELs; one built from gen_assets.sh's disc
+build, whose four extra language message tables are its own; GZLJ01, Japan, keeps 163) the
+decompilation cuts out of main.dol and the RELs; one built from gen_assets.sh's disc
 headers holds all of them. This looks for each array's bytes (from the local dtk split,
 build/decomp/build/<version>/bin/assets/*.bin, gen_assets.sh --version; as stored:
 big-endian, and with its 32-bit words swapped, as the Vec/cXy arrays are compiled) in each binary.
@@ -21,10 +22,11 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("binaries", nargs="+", type=Path)
     ap.add_argument("--decomp", type=Path, default=Path("build/decomp"))
-    ap.add_argument("--version", default="GZLE01", choices=("GZLE01", "GZLP01"),
-                    help="the disc the binaries are built for (GZLP01: the European build)")
+    ap.add_argument("--version", default="GZLE01", choices=("GZLE01", "GZLP01", "GZLJ01"),
+                    help="the disc the binaries are built for (GZLP01: the European build, "
+                         "GZLJ01: the Japanese one)")
     args = ap.parse_args()
-    want = {"GZLE01": 163, "GZLP01": 167}[args.version]
+    want = {"GZLE01": 163, "GZLP01": 167, "GZLJ01": 163}[args.version]
     bins = sorted((args.decomp / f"build/{args.version}/bin/assets").glob("*.bin"))
     if len(bins) != want:
         sys.exit(f"guard_nro: expected the {want} extracted arrays in {args.decomp}/build/{args.version}/bin/assets, "

@@ -45,7 +45,7 @@ Options:
   --run-timeout S  run.sh --timeout per run (default 3600)
   --heap-check N   run.sh --heap-check (default 30; 0 = off)
   --max-runs N     runs per stage at most (default 60)
-  --disc PATH      the build's disc, GZLE01 (GZLP01 for a European build) .iso (default COS_DISC)
+  --disc PATH      the build's disc, GZLE01 (GZLP01 for a European build, GZLJ01 for a Japanese one) .iso (default COS_DISC)
   --exe PATH       the executable (default build/native-mac/switchwaker)
   --out DIR        the sweep directory (default build/native-mac/runs/event-sweep-<timestamp>)
   --all-events     every event of every stage's list (default: see below)
