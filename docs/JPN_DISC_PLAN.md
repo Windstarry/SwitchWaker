@@ -82,3 +82,39 @@ Checked in the container (Linux build, `-DCOS_VERSION=1`, the Redump-verified GZ
   message system's group routing, the single message archive).
 - Data offsets: fixes keyed to GZLE01 addresses would silently miss on Japan; the PAL review (step 7 of
   PAL_DISC_PLAN.md) looks for them, and no Japan-specific offset work has been done yet.
+
+## Review of the host and game code against Japan (2026-10-17)
+
+The analogue of the PAL review (step 7 of PAL_DISC_PLAN.md). Two passes:
+
+1. **Hardcoded GameCube addresses in the port layer.** Every `0x8…` literal in `native/` is either a
+   hardware/algorithm constant (the DSP boot mails `0x8071FEED`/`0x80F3….`, the EXI channel bits, the
+   J3D MEM1 convention `0x80000000 | (ptr & 0x3FFFFFFF)`, SHA-1's `0x8F1BBCDC`, the test pattern) or a
+   comment naming where a value comes from (`pc_aspect.h`, `pc_meter_hooks.cpp`: the USA 16:9 Gecko
+   code's `.sdata2` values). **No address is used as one**, so nothing in the port layer is keyed to a
+   GZLE01 address. The port-layer version guards are right for Japan: `pc_language.cpp` is PAL-only
+   (`#if VERSION == VERSION_PAL`), `pc_logo_hooks.cpp`'s `l_msgDtCommand2` is `#if VERSION > VERSION_JPN`,
+   and the harness (`pc_msg.cpp`, `pc_save.cpp`) is done.
+
+2. **Units that lost their Japan branches to the zeldaret convergence** (the "lost PAL code" of
+   PAL_DISC_PLAN.md, for Japan). Counting `VERSION_JPN` per file in `game/` against the fork baseline
+   (snrubrm/tww b09eebc, the `build/decomp-docker` checkout), over the 2026 files present in both (168
+   carry Japan references), found four files with fewer Japan references in the port:
+
+   | Unit | Lost | Genuine? |
+   |---|---|---|
+   | `d/d_menu_window.cpp` | `event_wait_frame` (its declaration and logic, `#if VERSION > VERSION_JPN`) | **Yes.** Japan has no event-wait before the item menu opens; the converged file compiles it unguarded, so a Japanese build waits like the USA one. |
+   | `d/actor/d_a_bst.cpp` | the frame count branch (`#if VERSION <= VERSION_JPN \|\| VERSION == VERSION_PAL` → 410; the USA path uses 500) | **Yes.** The converged file has no version handling at all (`VERSION_SELECT`/`VERSION_JPN`: 0), so a Japanese build uses the USA timing for the boss's message. |
+   | `d/actor/d_a_saku.cpp` | `#if VERSION > VERSION_JPN` around the hit loop | No: the two sides only differ by `dCcD_Cyl* const cyl = &mCyl[id][i]` against a direct member access — the same object (a matching detail). |
+   | `JSystem/J3DGraphAnimator/J3DModel.cpp` | `#if VERSION == VERSION_JPN`'s `mpScaleFlagArr` check and the `VERSION <= VERSION_JPN` `#pragma optimization_level` blocks | Runtime: no (the OOM checks still exist, ordered differently); the pragmas only matter for matching the original. |
+
+   The first two are the real gaps: the fix is the one PAL already uses for its converged units — `d_menu_window.cpp`
+   and `d_a_bst.cpp` include snrubrm's unit from `game/src/pal/` under `#if VERSION == VERSION_PAL`, and that
+   `.inc` already carries the Japan branches (`VERSION_JPN`: 3 and 1). Extending the guard to
+   `VERSION == VERSION_PAL || VERSION == VERSION_JPN` restores them for Japan; no new `.inc` is needed, and
+   the USA build is untouched (it keeps the `#else` side).
+
+   Limits of the count: it only sees lost branches. Japan code re-expressed as `VERSION_SELECT(jpn, …)`
+   without the `VERSION_JPN` token would not show (checked: none of the four had a `VERSION_SELECT`), and
+   behaviour moved between files is out of its reach.
+
