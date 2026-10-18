@@ -26,7 +26,7 @@ public:
 
     struct TCachePage : TGlyphCacheInfo {
         /* 0x20 */ GXTexObj mTexObj;
-    };  // Size: 0x40
+    };  // Size: 0x40 (GameCube; 0x48 on the host, where the inherited mPrev/mNext pointers are 8 bytes)
 
     enum EPagingType {
         PAGE_TYPE_0,
@@ -56,7 +56,15 @@ public:
     GXTexObj* getTexObj(void* buffer) { return &((TCachePage*)buffer)->mTexObj; }
     void delete_and_initialize() { deleteMemBlocks_CacheFont(); initialize_state(); }
 
-    static u32 calcCacheSize(u32 param_0, int param_1) { return (ALIGN_NEXT(param_0, 0x20) + 0x40) * param_1; }
+    // The 0x40 in the decomp is the GameCube's sizeof(TCachePage); the host's is 0x48, and the cache
+    // size has to match the page stride allocArea derives from it (mDoExt_initFontCommon computes the
+    // same thing inline).
+    static u32 calcCacheSize(u32 param_0, int param_1) { return (ALIGN_NEXT(param_0, 0x20) + getTexAreaOffset()) * param_1; }
+
+    // The texture area follows the page header (the decomp's pCachePage + 1). The GameCube's
+    // 0x40-byte header is 32-byte aligned by construction, but the host's 0x48 is not, and the ARAM
+    // DMA asserts 32-byte alignment on both ends (JKRAramPiece::orderAsync), so round the header up.
+    static u32 getTexAreaOffset() { return ALIGN_NEXT(sizeof(TCachePage), 0x20); }
 
 private:
     /* 0x70 */ u32 mTotalWidSize;

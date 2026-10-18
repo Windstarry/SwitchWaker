@@ -3166,7 +3166,10 @@ void mDoExt_initFontCommon(JUTFont** p_font, ResFONT** p_resfont, JKRHeap* p_hea
     
     if (param_6 == 0) {
 #if VERSION <= VERSION_JPN
-        u32 temp = (param_8 + 0x40) * param_7;
+        // 0x40 in the decomp is the GameCube's sizeof(TCachePage); the cache size has to cover the
+        // same param_7 pages that JUTCacheFont::allocArea slices it into at the host's aligned
+        // stride (JUTCacheFont::getTexAreaOffset, 0x60 there vs the GameCube's 0x40 here).
+        u32 temp = (param_8 + JUTCacheFont::getTexAreaOffset()) * param_7;
 #else
         u32 temp = (((param_8+0x1F) & ~0x1F) + 0x40) * param_7;
 #endif

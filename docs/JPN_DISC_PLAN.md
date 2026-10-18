@@ -73,8 +73,89 @@ Checked in the container (Linux build, `-DCOS_VERSION=1`, the Redump-verified GZ
 - Console tests of `switchwaker-jpn.nro`: boot with `GZLJ01.iso` on the card.
 - Full regression (`regress.sh`) for the Japanese build.
 - The message sweep's Japanese routing: `pc_msg.cpp` checks each file's own entries and skips the
-  cross-file classification; routing by the number's group (`i_msgNo >> 16`) is left as a TODO where
+  cross-file classification; routing by the number's group (`iMsgNo >> 16`) is left as a TODO where
   the Japanese archive layout is known.
+
+## Behavioural check of the offset fixes (2026-10-17)
+
+Run in the container with the Japanese disc and the `build/native-linux-jpn` build:
+
+- The boss stage `M_DaiB:0:0` (Gohdan, `daBst_c`) boots and runs 900 frames uncapped with no fault:
+  the restored `d_a_bst` (its 410-frame branch) is exercised and behaves.
+- The item-menu target (`run.sh options-menu --stage sea:44:206 --input
+  native/check/input/menu-travel-save.txt`) **fails (exit 13) on the Japanese build both with the
+  restored `d_menu_window` and with it reverted to the PAL-only guard** (the `57a7fd9` version,
+  rebuilt and rerun): the failure is not caused by the restore. The crash point moves between runs —
+  `JUTResFont::isLeadByte` with a NULL `mIsLeadByte` (SIGSEGV at `switchwaker+0x16acc9`) in one, a
+  SIGABRT in another — so the Japanese menu/text path is unstable on its own and is the next target
+  (the fonts and their encoding; a `[aurora::card] Failed to open file` line appears in the same run,
+  which may be the save card).
+
+## The JUTCacheFont fixes and their verification (2026-10-17)
+
+The exit-13 above is fully explained: the Japanese build is the only one that reaches `JUTCacheFont`
+(`mDoExt_initFont0`, `VERSION <= VERSION_JPN`, the `rock_24_20_4i1.bfn` from `fontres.arc` with
+`param_7=0xB4, param_8=0x800`), and three of its host assumptions break in sequence. All three are
+GameCube 32-bit/4-byte assumptions the USA/PAL path never exercises:
+
+1. **`setBlock` walked the font resource through a raw `int*`** (`switch (*pData)`, `pData[1]`): the
+   block tags and sizes are big-endian disc data, so the little-endian host matched no tag and
+   advanced by the byteswapped size (`0x20` read as `0x20000000`): the walk ran 512 MiB out of
+   bounds and left `mIsLeadByte` unset (JUTResFont only sets it in its own `setBlock`), so the next
+   text draw called `isLeadByte` through a null function pointer (the SIGSEGV at `+0x16acc9`; gdb:
+   `setBlock <- internal_initiate <- JUTCacheFont ctor <- mDoExt_initFontCommon <- mDoExt_initFont0
+   <- mDoExt_getMesgFont <- dScnLogo_Delete`, `r14 = data + 0x20000000`). Fixed by reading through
+   `JUTDataBlockHeader` as `getMemorySize` and `JUTResFont::setBlock` already do.
+2. **`allocArray` allocated `u32[]` for the block-pointer array**: the decomp's `u32` is the
+   GameCube's 4-byte pointer; on the host the `setBlock` writes of `mpWidthBlocks`/`mpGlyphBlocks`/
+   `mpMapBlocks` overflowed the array by half and corrupted the heap (the next crash moved into
+   `JKRExpHeap::allocFromHead`, `+0x157a1a`, LOGO_SCENE). Fixed as `void*[]`, which
+   `JUTResFont::protected_initiate` already uses for the same array.
+3. **The cache-page layout is host-different.** `TGlyphCacheInfo` holds `mPrev`/`mNext` pointers:
+   0x20 bytes on the GameCube (where the header byte-for-byte overlays the 0x20-byte `ResFONT::GLY1`
+   disc record, `mPrev`/`mNext` being the record's `mType`/`mSize` words), 0x28 on the host, so
+   `sizeof(TCachePage)` is 0x48 against the decomp's hardcoded 0x40. Consequences, each hit in turn:
+   - `getGlyphFromAram` memcpy'd the 0x20-byte GLY1 record with `sizeof(TGlyphCacheInfo)`: the copy
+     overran the record and the `field_0x16`/`field_0x18` (numRows/numColumns) reads went past it,
+     so the per-sheet divide `*param_2 / (numRows * numColumns)` raised SIGFPE at frame 677. Fixed
+     by copying the shared fields explicitly (the GC's overlay is a big-endian accident, not a
+     contract); the sheet's ARAM address is read back from `((ResFONT::GLY1*)param_0)->mType`, which
+     `setBlock` stored there (on the GameCube that read went through the header's `mPrev` word).
+   - The page stride (`field_0x94 = mMaxSheetSize + 0x40`) and the cache size
+     (`calcCacheSize`, and the same inline computation in `mDoExt_initFontCommon`) sized the cache
+     for 0x40-byte pages: pages, their texture areas and the total no longer lined up. New
+     `JUTCacheFont::getTexAreaOffset()` = `ALIGN_NEXT(sizeof(TCachePage), 0x20)` — 0x40 on the
+     GameCube (unchanged), 0x60 on the host — used by the stride, both cache-size computations and
+     the texture area (the `pCachePage + 1` of the decomp).
+   - That alignment is not cosmetic: `JKRAramPiece::orderAsync` asserts 32-byte alignment on both
+     DMA ends, and the host's 0x48 header made the first glyph's texture transfer panic
+     (`OSPanic`, JKRAramPiece.cpp:102) right when the first message was to draw (frame 685,
+     `ARRIVAL_DRG2`'s message). The ARAM side is fine (the same addresses already passed the assert
+     as DMA destinations in `setBlock`).
+   - `invalidiateAllCache` threaded the free-page list through raw `int*` stores (4 bytes, and the
+     fields at 0x0/0x4, not the host pointers' 0x0/0x8): rebuilt it with real pointers.
+
+Verification, `options-menu --stage sea:44:206 --input menu-travel-save.txt` on the rebuilt
+`build/native-linux-jpn` (runs/options-menu-20261017-153826): the crash and both panics are gone —
+the run reaches the frame-3300 check point (129 s, through warps, events and menus), `#expect
+alloc-failures 0` and `#expect opened 3` pass. Two checks still fail, and both trace to one new,
+separate problem:
+
+- `FAIL stage (not in PLAY) -1, expected sea 11` and `FAIL card-roundtrip` (no save file): after the
+  first debug warp (sea 13, Dragon Roost, frame 470) the arrival demo `ARRIVAL_DRG2` (event 152)
+  starts at ~563 and never ends — the second warp (sea 11) is requested but never executes, so the
+  whole later flow (START, the save screens, the card write) never runs. The event sits in its
+  MESSAGE staff's `PUSHBUTTON` cut from 600 frames in (event-watch reports every 300 frames through
+  2700+). That cut waits for the message a prior `CREATE_MSG` cut created to reach
+  `fopMsgStts_MSG_DISPLAYED_e` (d_event_data.cpp `ACT_PUSHBUTTON`); the cut did advance past
+  `CREATE_MSG` (so `fopMsgM_messageSet` succeeded), but `dComIfGp_getMesgStatus()` reads 0 — no
+  message is on screen: the Japanese message process is created and then dies or ends without ever
+  displaying. The USA reference run of the same script has no such stall (B8, NATIVE_PORT_PLAN.md:
+  "Viajar to Dragon Roost and Windfall" works), so this is a Japanese message-path defect, not disc
+  flow — and it is only now reachable because the font fixes got the game this far. Next target:
+  the message process's own path (`f_op_msg_mng.cpp`'s `VERSION <= VERSION_JPN` branches, `d_msg`)
+  — why a created message ends without DISPLAYED; the `[aurora::card] Failed to open file: gczelda`
+  line (the save card's file, JAP/Card A) is likely the same area's second head.
 
 ## Risks
 
@@ -118,3 +199,52 @@ The analogue of the PAL review (step 7 of PAL_DISC_PLAN.md). Two passes:
    without the `VERSION_JPN` token would not show (checked: none of the four had a `VERSION_SELECT`), and
    behaviour moved between files is out of its reach.
 
+
+## The ARRIVAL_DRG2 hang: root cause and the JPN check input (2026-10-18)
+
+The two failing checks of the previous section (`stage sea 11`, `card-roundtrip`) were traced with
+source-level message traces (f_op_msg_mng, d_event_data, d_msg, f_pc_deletor) and a dump of
+zel_00.bmg's INF1 entries from the disc. Findings:
+
+1. **The BMG tag grammar is not JPN-specific.** The suspected truncated tag at message 0x5e5
+   (`1a 08 ff`) was a dump artifact: a tag's payload can contain 0x00, and the dumper treated the
+   first one as the string terminator. A constraint solve over all 30023 tags of the JPN
+   zel_00.bmg confirms the USA layout (`1A size p1 p2 code args`, skip = size) byte for byte; the
+   other disc with the same id ("塞尔达传说风之杖.gcm") differs only in text, not in grammar.
+
+2. **The hang is a test-input problem, not a message-system bug.** The JPN ARRIVAL_DRG2 text is
+   longer than the USA one and runs `0a 0a 0a` into the maxLines=3 page stop, so every message of
+   the chain (0x5e5, 0x5e6, 0x5e7, 0x5e8, 0x5e9, the item get 0x62c) waits in the STOP state for
+   A. The shared check input menu-travel-save.txt presses no A between the warp (frame 470) and
+   the menu (700), so the menu's warp tears down the stopped message; the event manager then
+   waits on the dead cut for good (PUSHBUTTON holds the deleted l_msg, FINISH never ends), the
+   warp target never reaches PLAY and the save flow never happens. The USA text is short enough
+   that its message chain is still mid-typing (not yet paged) at the same frames, which is why
+   the shared input passes there.
+
+3. **The Dragon Roost leg is not recoverable with input alone.** With A presses every 30 frames
+   the whole message chain completes (all six messages DESTROYED, the event advances) - but the
+   event chain then continues into the TACT_TEARCH0 wind-waker tutorial (message 0x637, then the
+   song input), which the check input cannot realistically page through. The JPN check input
+   therefore skips the Dragon Roost leg: native/check/input/menu-travel-save-jpn.txt travels to
+   Windfall directly (Viajar list 2x DOWN); Windfall's arrival has no event, the save flow is
+   reached at the USA timings and the run passes.
+
+4. **regress.sh gained per-disc target lines.** A target line may end in `when GZLJ01` /
+   `unless GZLJ01` (one game id); regress.sh's filter_targets keeps only the lines that match the
+   build's COS_GAME_ID (regress_targets.txt lines 130-131). The USA/PAL builds keep
+   menu-travel-save.txt and the JPN build runs menu-travel-save-jpn.txt.
+
+Verification, `options-menu --stage sea:44:206 --input menu-travel-save-jpn.txt` on
+build/native-linux-jpn (runs/msgverify-20261018-130111): **PASS at frame 3300, 0 errors** -
+`opened 3`, `stage sea 11` (PLAY reached), `alloc-failures 0`, `card-roundtrip sea 44` all pass.
+The full regression suite has not been rerun with the filter change (regress.sh's other targets
+have no `when`/`unless` suffix and are unaffected); the four JPN smoke targets of step
+"Verification (pending)" above still stand.
+
+One host-level issue remains from the traces, deliberately not chased further here: the event
+manager deadlocks when a scene change kills a message process that a PUSHBUTTON cut is waiting
+on (the cut keeps polling the deleted message). Real players can open the host menu during any
+dialogue, so USA/PAL have the same latent bug - it is just far less likely there. A fix would
+make specialProcMessage's PUSHBUTTON (d_event_data.cpp) detect the deleted process (SearchByID
+per frame) and end its cut; left to its own lane.

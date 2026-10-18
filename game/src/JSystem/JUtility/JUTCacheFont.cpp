@@ -214,7 +214,11 @@ bool JUTCacheFont::allocArea(void* cacheBuffer, u32 param_1, JKRHeap* heap) {
         }
     }
 
-    field_0x94 = mMaxSheetSize + 0x40;
+    // 0x40 in the decomp is the GameCube's sizeof(TCachePage); the stride has to match the host's
+    // aligned page size (see getTexAreaOffset), or the page headers and their texture areas (written
+    // through the aligned texArea offset) do not line up with the stride invalidiateAllCache lays
+    // the pages out at.
+    field_0x94 = mMaxSheetSize + getTexAreaOffset();
     mCachePage = param_1 / field_0x94;
     u32 v1 = field_0x94 * mCachePage;
     if (mCachePage == 0) {
@@ -243,7 +247,11 @@ bool JUTCacheFont::allocArea(void* cacheBuffer, u32 param_1, JKRHeap* heap) {
 
 /* 802C0A90-802C0B78       .text allocArray__12JUTCacheFontFP7JKRHeap */
 bool JUTCacheFont::allocArray(JKRHeap* heap) {
-    mpMemBlocks = (void**)new (heap, 0) u32[mWidthBlockNum + mGlyphBlockNum + mMapBlockNum];
+    // void*, not u32: the array holds pointers, and on the host a pointer is 8 bytes where the
+    // decomp's u32 was the GameCube's 4. Allocating 4*count bytes and storing count pointers then
+    // overflowed the block by half (setBlock's mpWidthBlocks/mpGlyphBlocks/mpMapBlocks writes),
+    // damaging the heap. JUTResFont::protected_initiate sizes its same array as void*[] already.
+    mpMemBlocks = new (heap, 0) void*[mWidthBlockNum + mGlyphBlockNum + mMapBlockNum];
     if (mpMemBlocks == NULL) {
         return false;
     }
@@ -279,7 +287,14 @@ void JUTCacheFont::setBlock() {
     const int* pData = (int*)mResFont->data;
 
     for (int i = 0; i < mResFont->numBlocks; i++) {
-        switch (*pData) {
+        // The block tags and sizes are disc data (big-endian): they have to be read through
+        // JUTDataBlockHeader, as getMemorySize above and JUTResFont::setBlock do. The decomp's raw
+        // int* walk (switch (*pData) / pData[1]) only holds on the big-endian target; on the host it
+        // matched no tag and advanced pData by a byte-swapped size (0x20 read as 0x20000000), so the
+        // walk left mIsLeadByte unset and ran 512 MiB out of bounds. Only the Japanese build reaches
+        // JUTCacheFont at all (mDoExt_initFont0, VERSION <= VERSION_JPN).
+        u32 size = ((JUTDataBlockHeader*)pData)->mSize;
+        switch (((JUTDataBlockHeader*)pData)->mType) {
         case 'INF1': {
             memcpy(mInfoBlock, pData, 0x20);
             u32 u = mInfoBlock->fontType;
@@ -288,14 +303,14 @@ void JUTCacheFont::setBlock() {
             break;
         }
         case 'WID1':
-            memcpy(pWidth, pData, pData[1]);
+            memcpy(pWidth, pData, size);
             mpWidthBlocks[widthNum] = (ResFONT::WID1*)pWidth;
-            pWidth += pData[1];
+            pWidth += size;
             widthNum++;
             break;
         case 'GLY1': {
             memcpy(piVar5, pData, 0x20);
-            JKRAramBlock* iVar1 = JKRMainRamToAram((u8*)pData + 0x20, aramAddress, pData[1] - 0x20, EXPAND_SWITCH_UNKNOWN0, 0, NULL, -1);
+            JKRAramBlock* iVar1 = JKRMainRamToAram((u8*)pData + 0x20, aramAddress, size - 0x20, EXPAND_SWITCH_UNKNOWN0, 0, NULL, -1);
             if (iVar1 == NULL) {
                 OSPanic(__FILE__, 476, "Cannot alloc ARAM area.");
             }
@@ -306,24 +321,24 @@ void JUTCacheFont::setBlock() {
             mpGlyphBlocks[gylphNum] = piVar5;
             gylphNum++;
             piVar5++;
-            aramAddress = pData[1] + aramAddress - 0x20;
+            aramAddress = size + aramAddress - 0x20;
             break;
         }
         case 'MAP1':
-            memcpy(pMap, pData, pData[1]);
+            memcpy(pMap, pData, size);
             mpMapBlocks[mapNum] = pMap;
             if (mMaxCode > mpMapBlocks[mapNum]->startCode) {
                 mMaxCode = mpMapBlocks[mapNum]->startCode;
             }
             mapNum++;
-            pMap = (ResFONT::MAP1*)((u8*)pMap + pData[1]);
+            pMap = (ResFONT::MAP1*)((u8*)pMap + size);
             break;
         default:
             JUTReportConsole("Unknown data block\n");
             break;
         }
 
-        pData = (int*)((u8*)pData + pData[1]);
+        pData = (int*)((u8*)pData + size);
     }
 }
 
@@ -358,7 +373,25 @@ JUTCacheFont::TGlyphCacheInfo* JUTCacheFont::determineBlankPage() {
 /* 802C0E80-802C0FE8       .text getGlyphFromAram__12JUTCacheFontFPQ212JUTCacheFont15TGlyphCacheInfoPQ212JUTCacheFont10TCachePagePiPi */
 void JUTCacheFont::getGlyphFromAram(TGlyphCacheInfo* param_0, TCachePage* pCachePage, int* param_2, int* param_3) {
     TGlyphCacheInfo* pGylphCacheInfo = pCachePage;
-    memcpy(pGylphCacheInfo, param_0, sizeof(TGlyphCacheInfo));
+    // On the GameCube a cache page's header overlays the 0x20-byte ResFONT::GLY1 record byte for
+    // byte (mPrev/mNext are the record's mType/mSize words, and prepend overwrites them below), so
+    // the decomp could memcpy the record into the page. On the host the structs differ (8-byte
+    // pointers: sizeof(TGlyphCacheInfo) is 0x28, not 0x20) and the data fields sit at different
+    // offsets: the memcpy overran the record and left field_0x16/field_0x18 (numRows/numColumns)
+    // reading past it, so the per-sheet divide below raised SIGFPE. Copy the shared fields
+    // explicitly instead.
+    ResFONT::GLY1* gly1 = (ResFONT::GLY1*)param_0;
+    pGylphCacheInfo->field_0x8 = gly1->startCode;
+    pGylphCacheInfo->field_0xa = gly1->endCode;
+    pGylphCacheInfo->field_0xc = gly1->cellWidth;
+    pGylphCacheInfo->field_0xe = gly1->cellHeight;
+    pGylphCacheInfo->field_0x10 = gly1->textureSize;
+    pGylphCacheInfo->mTexFormat = gly1->textureFormat;
+    pGylphCacheInfo->field_0x16 = gly1->numRows;
+    pGylphCacheInfo->field_0x18 = gly1->numColumns;
+    pGylphCacheInfo->mWidth = gly1->textureWidth;
+    pGylphCacheInfo->mHeight = gly1->textureHeight;
+    pGylphCacheInfo->field_0x1e = gly1->padding;
     prepend(pGylphCacheInfo);
     int iVar3 = pGylphCacheInfo->field_0x16 * pGylphCacheInfo->field_0x18;
     int iVar2 = *param_2 / iVar3;
@@ -367,11 +400,17 @@ void JUTCacheFont::getGlyphFromAram(TGlyphCacheInfo* param_0, TCachePage* pCache
     pGylphCacheInfo->field_0xa = pGylphCacheInfo->field_0xa < local_30 ? pGylphCacheInfo->field_0xa : local_30;
     *param_3 = iVar2;
     *param_2 -= iVar2 * iVar3;
+    // param_0->mPrev read the record's mType word on the GameCube: the sheet's ARAM address, which
+    // setBlock stored there (mPrev is a pointer only in the host's TGlyphCacheInfo layout). mType is
+    // BE(u32), so reading it back through ResFONT::GLY1 returns that address. The texture area is the
+    // decomp's pCachePage + 1, taken at the stride's aligned offset: the host's 0x48-byte header is
+    // not 32-byte aligned, and the ARAM DMA asserts alignment on the main-RAM side as well.
+    u8* texArea = (u8*)pCachePage + getTexAreaOffset();
     u8* result =
-        JKRAramToMainRam((uintptr_t)param_0->mPrev + pGylphCacheInfo->field_0x10 * iVar2, (u8*)(pCachePage + 1),
+        JKRAramToMainRam(((ResFONT::GLY1*)param_0)->mType + pGylphCacheInfo->field_0x10 * iVar2, texArea,
                          pGylphCacheInfo->field_0x10, EXPAND_SWITCH_UNKNOWN0, 0, NULL, 0xffffffff, NULL);
     JUT_ASSERT(623, result);
-    GXInitTexObj(&pCachePage->mTexObj, pCachePage + 1, pGylphCacheInfo->mWidth, pGylphCacheInfo->mHeight,
+    GXInitTexObj(&pCachePage->mTexObj, texArea, pGylphCacheInfo->mWidth, pGylphCacheInfo->mHeight,
                  (GXTexFmt)pGylphCacheInfo->mTexFormat, GX_CLAMP, GX_CLAMP, GX_FALSE);
     GXInitTexObjLOD(&pCachePage->mTexObj, GX_LINEAR, GX_LINEAR, 0.0f, 0.0f, 0.0f, GX_FALSE, GX_FALSE,
                     GX_ANISO_1);
@@ -435,40 +474,22 @@ JUTCacheFont::TCachePage* JUTCacheFont::loadCache_char_subroutine(int* param_0, 
 
 /* 802C11E4-802C126C       .text invalidiateAllCache__12JUTCacheFontFv */
 void JUTCacheFont::invalidiateAllCache() {
-    int* piVar3 = (int*)mCacheBuffer;
-    for (int uVar2 = 0; uVar2 < mCachePage; uVar2++) {
-        int iVar1;
-        if (uVar2 == 0) {
-            iVar1 = 0;
-        } else {
-#if TARGET_PC
-            iVar1 = (intptr_t)piVar3 - field_0x94;
-#else
-            iVar1 = (int)piVar3 - field_0x94;
-#endif
-        }
-        *piVar3 = iVar1;
-        if (uVar2 == mCachePage - 1) {
-            iVar1 = 0;
-        } else {
-#if TARGET_PC
-            iVar1 = (intptr_t)piVar3 + field_0x94;
-#else
-            iVar1 = (int)piVar3 + field_0x94;
-#endif
-        }
-        piVar3[1] = iVar1;
-#if TARGET_PC
-        piVar3 = (int*)((intptr_t)piVar3 + field_0x94);
-#else
-        piVar3 = (int*)((int)piVar3 + field_0x94);
-#endif
+    // The free pages form a doubly linked list threaded through their TGlyphCacheInfo headers. On
+    // the GameCube the headers are 0x20 bytes with mPrev/mNext as 4-byte words at 0x0/0x4, so the
+    // decomp built the list through raw int* stores. On the host mPrev/mNext are real pointers at
+    // 0x0/0x8 (the page stride field_0x94 includes the 0x48-byte TCachePage): a truncated 4-byte
+    // store would leave the high half of each pointer unset and the list walks in
+    // determineBlankPage/loadCache_char_subroutine would follow garbage.
+    TGlyphCacheInfo* prev = NULL;
+    u8* page = mCacheBuffer;
+    for (int i = 0; i < mCachePage; i++) {
+        TGlyphCacheInfo* info = (TGlyphCacheInfo*)page;
+        info->mPrev = prev;
+        info->mNext = i == mCachePage - 1 ? NULL : (TGlyphCacheInfo*)(page + field_0x94);
+        prev = info;
+        page += field_0x94;
     }
-#if TARGET_PC
-    field_0xa8 = (intptr_t)piVar3 - field_0x94;
-#else
-    field_0xa8 = (int)piVar3 - field_0x94;
-#endif
+    field_0xa8 = (u32)(uintptr_t)prev;
     field_0xa4 = (TGlyphCacheInfo*)mCacheBuffer;
     field_0x9c = NULL;
     field_0xa0 = NULL;
