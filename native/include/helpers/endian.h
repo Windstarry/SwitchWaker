@@ -16,6 +16,22 @@
 #endif
 
 #include <bit>
+#include <type_traits>
+
+// libstdc++ < 11 (e.g. Ubuntu 20.04 cross-build images) ships <bit> without
+// std::bit_cast, which only landed in GCC 11. Fall back to the clang/GCC builtin so the
+// constexpr BE<f32> helpers below still compile there.
+#if !defined(__cpp_lib_bit_cast) || __cpp_lib_bit_cast < 201806L
+namespace std {
+template <class To, class From>
+constexpr To bit_cast(const From& from) noexcept {
+    static_assert(sizeof(To) == sizeof(From), "bit_cast requires equal sizes");
+    static_assert(std::is_trivially_copyable_v<To> && std::is_trivially_copyable_v<From>,
+                  "bit_cast requires trivially copyable types");
+    return __builtin_bit_cast(To, from);
+}
+} // namespace std
+#endif
 
 #include "dolphin/types.h"
 #include "dolphin/mtx.h"

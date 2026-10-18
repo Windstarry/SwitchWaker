@@ -748,7 +748,14 @@ def _compile_checks(text: str, argv: list[str], cwd: str, scratch: str) -> tuple
         tf.write(text)
         probe = tf.name
     try:
-        cmd = argv + ["-fsyntax-only", "-ferror-limit=0", "-fno-color-diagnostics", probe]
+        # -ferror-limit/-fno-color-diagnostics are clang-only; GCC (cross builds) has no
+        # equivalents (GCC caps errors with -fmax-errors and colors when asked).
+        compiler = argv[0] if argv else ""
+        if re.search(r"clang(\+\+)?(-\d+(\.\d+)*)?$", compiler) or "clang" in compiler:
+            extra = ["-fsyntax-only", "-ferror-limit=0", "-fno-color-diagnostics"]
+        else:
+            extra = ["-fsyntax-only"]
+        cmd = argv + extra + [probe]
         p = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True)
     finally:
         os.unlink(probe)

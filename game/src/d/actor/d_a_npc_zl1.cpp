@@ -1072,7 +1072,9 @@ void daNpc_Zl1_c::checkOrder() {
                     field_0x7D3 = true;
                     break;
                 case 2:
-                    dComIfGs_setRestartRoom(*static_cast<const cXyz*>(a_start_pos), 0x4000, 0);
+                    // &a_start_pos[0], not a_start_pos: clang decays the array in static_cast, GCC
+                    // refuses to static_cast an array at all ("invalid 'static_cast' from type 'const Vec [1]'").
+                    dComIfGs_setRestartRoom(*static_cast<const cXyz*>(&a_start_pos[0]), 0x4000, 0);
                     field_0x7C9 = true;
                     break;
                 case 3:

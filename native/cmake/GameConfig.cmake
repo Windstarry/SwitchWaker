@@ -145,7 +145,10 @@ set(COS_GAME_COMPILE_OPTIONS
         $<$<COMPILE_LANGUAGE:CXX>:-Wno-trigraphs>
         $<$<COMPILE_LANGUAGE:CXX>:-Wno-non-pod-varargs>
         $<$<COMPILE_LANGUAGE:CXX>:-Wno-register>           # 'register' storage class (C++17)
-        $<$<COMPILE_LANGUAGE:CXX>:-Wno-c++11-narrowing>    # implicit narrowing in braces, as MWCC
+        $<$<COMPILE_LANGUAGE:CXX>:-Wno-c++11-narrowing>    # implicit narrowing in braces, as MWCC (clang)
+        # GCC spells the same diagnostic -Wnarrowing and makes it an error rather than a warning;
+        # -Wno-narrowing is the documented way to downgrade it (checked with g++ 12).
+        $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CXX_COMPILER_ID:GNU>>:-Wno-narrowing>
         $<$<COMPILE_LANGUAGE:CXX>:-Wno-invalid-offsetof>
         $<$<COMPILE_LANGUAGE:CXX>:-Wno-deprecated-volatile>
         $<$<COMPILE_LANGUAGE:CXX>:-Wno-deprecated-enum-enum-conversion>
@@ -166,7 +169,8 @@ set(COS_GAME_COMPILE_OPTIONS
         # long on MWCC: next_msgStatus(unsigned long*) did not override fopNpc_npc_c's, and five
         # NPCs' talks ended after one message) is an error with clang (Mac, Linux).
         $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CXX_COMPILER_ID:Clang,AppleClang>>:-Werror=overloaded-virtual>
-        -ferror-limit=50)
+        # clang-only error cap; GCC (cross builds) has no equivalent and hard-errors on it
+        $<$<CXX_COMPILER_ID:Clang,AppleClang>:-ferror-limit=50>)
 
 # Phase 4 inventory (docs/NATIVE_PORT_PHASE4_6.md, step 4.0a): the 64-bit and missing-return
 # diagnostics, appended after the shared flags so no -Wno-... above can hide them. Turning the

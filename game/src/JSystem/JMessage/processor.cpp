@@ -295,10 +295,13 @@ const char* TSequenceProcessor::process(const char* stop) {
                 u32 rt = on_branch_queryResult();
 
                 if (rt > 0xFFFF) {
+                    // rt is u32 on purpose (the negative query results below wrap to
+                    // 0xFFFFFFFF); the casts keep the labels unsigned so GCC accepts them
+                    // as non-narrowing.
                     switch (rt) {
-                    case -1:
+                    case (u32)-1:
                         return mCurrent;
-                    case -2:
+                    case (u32)-2:
                         mStatus = kStatus_Normal;
                         break;
                     }

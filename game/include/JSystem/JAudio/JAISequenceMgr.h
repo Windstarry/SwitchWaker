@@ -19,9 +19,11 @@ namespace JAInter {
         ~PlayerParameter();
 
         // fake struct to match JAInter::SystemInterface::setSeqPortargsF32 and JAInter::SystemInterface::setSeqPortargsU32
+        // The members carry a trailing underscore: a member named like the global f32/u32 typedef
+        // makes GCC reject the declaration ("changes meaning of 'f32'", only -fpermissive accepts it).
         union PortArg {
-            f32 f32;
-            u32 u32;
+            f32 f32_;
+            u32 u32_;
             s16* ps16;
         };
 

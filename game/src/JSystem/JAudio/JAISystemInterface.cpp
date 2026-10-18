@@ -72,7 +72,7 @@ void JAInter::SystemInterface::setSeqPortargsF32(JAInter::SeqUpdateData* updateD
 #if TARGET_PC
     *(f32*)portArgWord(updateData, playerParameterIndex, portArgIndex) = value;
 #else
-    updateData->systemTrackParameter[playerParameterIndex].mPortArgs.asArray[portArgIndex].f32 = value;
+    updateData->systemTrackParameter[playerParameterIndex].mPortArgs.asArray[portArgIndex].f32_ = value;
 #endif
 }
 
@@ -81,7 +81,7 @@ void JAInter::SystemInterface::setSeqPortargsU32(JAInter::SeqUpdateData* updateD
 #if TARGET_PC
     *portArgWord(updateData, playerParameterIndex, portArgIndex) = value;
 #else
-    updateData->systemTrackParameter[playerParameterIndex].mPortArgs.asArray[portArgIndex].u32 = value;
+    updateData->systemTrackParameter[playerParameterIndex].mPortArgs.asArray[portArgIndex].u32_ = value;
 #endif
 }
 

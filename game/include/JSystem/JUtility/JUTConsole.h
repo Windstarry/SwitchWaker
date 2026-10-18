@@ -152,7 +152,9 @@ public:
     typedef JGadget::TLinkList<JUTConsole, -offsetof(JUTConsole, mLinkNode)> ConsoleList;
 #else
     // clangd does not support offsetof in template arguments.
-    typedef JGadget::TLinkList<JUTConsole, -sizeof(JKRDisposer)> ConsoleList;
+    // cast before negating: -sizeof is unsigned long, which GCC rejects as a narrowing
+    // int template argument
+    typedef JGadget::TLinkList<JUTConsole, -static_cast<int>(sizeof(JKRDisposer))> ConsoleList;
 #endif
 
 private:
