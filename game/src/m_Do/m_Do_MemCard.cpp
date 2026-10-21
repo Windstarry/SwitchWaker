@@ -12,7 +12,6 @@
 #if TARGET_PC
 #include "cos_card_extras.h" // CARD_ERROR_* (Aurora spells them CARD_RESULT_*)
 #include "dolphin/dvd/dvd.h" // DVDGetCurrentDiskID, for CARDInit below
-#include <stdio.h>           // setvbuf: the card thread's diagnostics go to stdout
 #endif
 #include "global.h"
 #include "string.h"
@@ -87,19 +86,10 @@ void mDoMemCd_Ctrl_c::ThdInit() {
 
 /* 80018E18-80018EC8       .text main__15mDoMemCd_Ctrl_cFv */
 void mDoMemCd_Ctrl_c::main() {
-#if TARGET_PC
-    // The game's OSReport is vprintf(stdout) (game/src/dolphin/os/OSError.c) and stdout is
-    // block-buffered when it goes to log.txt, so diagnostics written right before a hang never
-    // reach the file. Unbuffered from here on: the card thread starts with the game loop.
-    setvbuf(stdout, NULL, _IONBF, 0);
-#endif
     while (true) {
         OSLockMutex(&mMutex);
         while (mCommand == CARD_NO_COMMAND)
             OSWaitCond(&mCond, &mMutex);
-#if TARGET_PC
-        OSReport("mDoMemCd main: command=%d state=%d\n", mCommand, field_0x1660);
-#endif
 
 #if VERSION == VERSION_DEMO
         if (mDoRst::isReset()) {
@@ -185,15 +175,8 @@ void mDoMemCd_Ctrl_c::restore() {
 void mDoMemCd_Ctrl_c::store() {
     CARDFileInfo cardInfo;
     s32 ret = CARD_ERROR_READY;
-#if TARGET_PC
-    // Field diagnostics for the handheld's "cannot save" report.
-    OSReport("mDoMemCd store: entry state=%d\n", field_0x1660);
-#endif
     if (field_0x1660 == 2) {
         ret = CARDCreate(mCardSlot, "gczelda", 0x18000, &cardInfo);
-#if TARGET_PC
-        OSReport("mDoMemCd store: CARDCreate=%d\n", ret);
-#endif
         if (ret == CARD_ERROR_READY)
             field_0x1660 = 1;
         else if (ret == CARD_ERROR_EXIST)
@@ -204,14 +187,8 @@ void mDoMemCd_Ctrl_c::store() {
 
     if (field_0x1660 == 1) {
         ret = CARDOpen(mCardSlot, "gczelda", &cardInfo);
-#if TARGET_PC
-        OSReport("mDoMemCd store: CARDOpen=%d\n", ret);
-#endif
         if (ret == CARD_ERROR_READY) {
             ret = mDoMemCdRWm_Store(&cardInfo, mData, sizeof(mData));
-#if TARGET_PC
-            OSReport("mDoMemCd store: mDoMemCdRWm_Store=%d\n", ret);
-#endif
             if (ret != CARD_ERROR_READY)
                 setCardState(ret);
             else
@@ -221,9 +198,6 @@ void mDoMemCd_Ctrl_c::store() {
             setCardState(ret);
         }
     } else {
-#if TARGET_PC
-        OSReport("mDoMemCd store: create failed, state=%d\n", field_0x1660);
-#endif
         setCardState(ret);
     }
 }
@@ -239,12 +213,7 @@ void mDoMemCd_Ctrl_c::command_format() {
 
 /* 800191C4-80019238       .text save__15mDoMemCd_Ctrl_cFPvUlUl */
 void mDoMemCd_Ctrl_c::save(void* data, u32 size, u32 offset) {
-    BOOL locked = OSTryLockMutex(&mMutex);
-#if TARGET_PC
-    // Field diagnostics: does the save request reach the card thread at all?
-    OSReport("mDoMemCd save: trylock=%d state=%d\n", locked, field_0x1660);
-#endif
-    if (locked) {
+    if (OSTryLockMutex(&mMutex)) {
         memcpy(&mData[offset], data, size);
         mCommand = CARD_STORE;
         OSUnlockMutex(&mMutex);

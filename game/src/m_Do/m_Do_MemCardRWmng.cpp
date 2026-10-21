@@ -39,16 +39,9 @@ s32 mDoMemCdRWm_Store(CARDFileInfo* card, void* data, u32 size) {
     s32 ret;
     mDoMemCdRWm_BuildHeader((mDoMemCdRWm_HeaderData*)sTmpBuf);
     ret = CARDWrite(card, sTmpBuf, sizeof(card_savedata), 0 * sizeof(card_savedata));
-#if TARGET_PC
-    OSReport("Store: header write=%d\n", ret);
-#endif
     if (ret != CARD_ERROR_READY) return ret;
 
-    BOOL statOk = mDoMemCdRWm_CheckCardStat(card);
-#if TARGET_PC
-    OSReport("Store: CheckCardStat=%d\n", statOk);
-#endif
-    if (!statOk) {
+    if (!mDoMemCdRWm_CheckCardStat(card)) {
         memset(sTmpBuf, 0, sizeof(sTmpBuf));
         ret = CARDWrite(card, sTmpBuf, sizeof(card_savedata), 1 * sizeof(card_savedata));
         if (ret != CARD_ERROR_READY) return ret;
@@ -70,25 +63,14 @@ s32 mDoMemCdRWm_Store(CARDFileInfo* card, void* data, u32 size) {
     save->csum = csum;
 
     ret = CARDWrite(card, sTmpBuf, sizeof(card_savedata), 1 * sizeof(card_savedata));
-#if TARGET_PC
-    OSReport("Store: slot1 write=%d\n", ret);
-#endif
     if (ret != CARD_ERROR_READY) return ret;
     ret = CARDRead(card, sTmpBuf, sizeof(card_savedata), 1 * sizeof(card_savedata));
-#if TARGET_PC
-    OSReport("Store: slot1 read=%d csum=%d/%d\n", ret,
-             (int)mDoMemCdRWm_CalcCheckSum(sTmpBuf, sizeof(card_savedata) - sizeof(save->csum)), (int)csum);
-#endif
     if (ret != CARD_ERROR_READY) return ret;
     if (mDoMemCdRWm_CalcCheckSum(sTmpBuf, sizeof(card_savedata) - sizeof(save->csum)) != csum) return ret;
 
     ret = CARDWrite(card, sTmpBuf, sizeof(card_savedata), 2 * sizeof(card_savedata));
     if (ret != CARD_ERROR_READY) return ret;
     ret = CARDRead(card, sTmpBuf, sizeof(card_savedata), 2 * sizeof(card_savedata));
-#if TARGET_PC
-    OSReport("Store: slot2 read=%d csum=%d/%d\n", ret,
-             (int)mDoMemCdRWm_CalcCheckSum(sTmpBuf, sizeof(card_savedata) - sizeof(save->csum)), (int)csum);
-#endif
     if (ret != CARD_ERROR_READY) return ret;
     if (mDoMemCdRWm_CalcCheckSum(sTmpBuf, sizeof(card_savedata) - sizeof(save->csum)) != csum) return ret;
 

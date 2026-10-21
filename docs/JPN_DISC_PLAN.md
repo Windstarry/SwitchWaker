@@ -303,20 +303,19 @@ first result in `field_0x540` (`dataWrite` takes one poll right after `mDoMemCd_
 `memCardDataSaveWait` only polls while it is 0). The USA flow is the one the handheld port is
 verified with, so the Japan build now uses it too: `dataWrite` takes that first poll for every
 version and `memCardDataSaveWait` is the USA body without the `VERSION <= VERSION_JPN`
-variants. Verified on the device: the save completes and the screen returns to the game.
+variants. Verified on the device: the save completes and the screen returns to the game, and
+after restarting the port the save loads with the same progress and items it was written with
+(the round trip closes).
 
 Diagnostics note: the game's `OSReport` is the weak `vprintf(stdout)` in
 `game/src/dolphin/os/OSError.c`, and stdout is block-buffered when the launcher redirects it to
-`log.txt`, so lines written just before a hang never reached the file. The card thread now calls
-`setvbuf(stdout, NULL, _IONBF, 0)` before its loop. The same files still carry temporary
-`OSReport` field diagnostics; they are listed as outstanding below.
+`log.txt`, so lines written just before a hang never reached the file. The field diagnostics used
+to find the save defect (and the `setvbuf` that made them visible) have been removed again; the
+only `OSReport`s left in the card code are the three real failure reports in
+`mDoMemCdRWm_BuildHeader` (missing archive, unmounted archive, missing banner/icon).
 
 ## Outstanding (2026-10-22)
 
-- The save (both halves: SaveSync's busy result and the USA save-screen flow) is verified on the
-  device; a restart-and-load round trip has not been checked yet.
-- Remove the temporary `OSReport` diagnostics in `mDoMemCd_Ctrl_c::save()`, `main()`, `store()`
-  and `mDoMemCdRWm_Store` (the save is verified; they are only field instrumentation).
 - Fixes 3 (`ruby_character`) and 4 (`cardicon.arc` guard) have not yet been verified past their
   frames in one run together.
 - The full regression suite has not been rerun with the per-disc `when`/`unless` filter.
