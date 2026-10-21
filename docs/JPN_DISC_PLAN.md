@@ -286,6 +286,8 @@ verified by the run that went past both; 3 and 4 are implemented and uploaded bu
 verified past the frame each used to die at (no automatic run has reached them again). The full
 regression suite has not been rerun for any of them.
 
-Build-side note: Aurora patch `0022-pad-trigger-axis-buttons.patch` was committed upstream with
-CRLF line endings (and `switch/native/aurora/patches/0017-switch-deko3d-depth-copies.patch`
-likewise), which makes `git apply` fail inside the Linux build container. Both are LF now.
+Build-side note: the repository stores Aurora patch `0022-pad-trigger-axis-buttons.patch` and
+`switch/native/aurora/patches/0017-switch-deko3d-depth-copies.patch` with LF, but `core.autocrlf`
+checked those two working-tree copies out with CRLF, and the container's `git apply` then refused
+them (the configure died on 0022). Normalizing the two worktree files to LF fixes it; no
+repository change is needed.
