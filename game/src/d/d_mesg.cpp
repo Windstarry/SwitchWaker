@@ -901,7 +901,13 @@ void dMesg_tSequenceProcessor::setCharacter() {
 char* dMesg_tSequenceProcessor::ruby_character(char* param_1, int param_2) {
     dMesg_tControl* mesgControl = (dMesg_tControl*)getControl();
     f32 f31 = f32(g_msgHIO.field_0x68) / f32(((dMesg_tControl*)getControl())->getRubyFont()->getCellWidth());
-    char buffer[3];
+    // static, not a plain local: the decomp returns this buffer's address, which is dead on
+    // return (MWCC returned the stack slot and the caller's strcat consumed it immediately).
+    // GCC 12 at -O2 knows the returned address cannot be used and folds the return value to
+    // NULL, so do_systemTagCode strcat'ed NULL and crashed (SIGSEGV addr=0x0 at frame 11019,
+    // the first message with a ruby tag after the prologue). Static storage keeps the pointer
+    // valid for that immediate use.
+    static char buffer[3];
     char* src = param_1 + param_2;
     buffer[0] = src[0];
     buffer[1] = src[1];
@@ -2394,7 +2400,16 @@ void dMesg_waitProc(sub_mesg_class* i_Msg) {
 #if VERSION <= VERSION_JPN
     if (i_Msg->field_0x150 != dMesg_gpControl->getMessageCode()) {
 #if VERSION > VERSION_DEMO
+#if TARGET_PC
+        // Decision H5 for the Japan path, for the same reason as the 0xa32d * 2 heap below: the
+        // host's 18 dMesg_outFont_c (two J2DPicture with a JUTTexture each) do not fit the
+        // GameCube's 0x9f2d. The observed heap (its usable size is 0x9e20) ran out at the 18th
+        // font, the JUTPalette allocation returned NULL, and attachPalette dereferenced it
+        // (SIGSEGV addr=0x28) as the first room after the prologue was created.
+        i_Msg->field_0x100 = JKRCreateExpHeap(0x9f2d * 2, i_Msg->heap, false);
+#else
         i_Msg->field_0x100 = JKRCreateExpHeap(0x9f2d, i_Msg->heap, false);
+#endif
 #endif
 #else
     nowMesgCode = dMesg_gpControl->getMessageCode();

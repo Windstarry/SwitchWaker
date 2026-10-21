@@ -190,7 +190,11 @@ public:
     /* 0x6CE */ u8 field_0x6CE[0x6D0 - 0x6CE];
     /* 0x6D0 */ J3DModel* mpModel;
     /* 0x6D4 */ daNpc_Zl1_matAnm_c* field_0x6D4[2];
-    /* 0x6DC */ char mArcName[3];
+    // 4, not 3: decideType writes "Zl2" (3 chars + NUL) here with strcpy, and the GameCube struct
+    // always had the byte at 0x6DF before mShadowId (0x6E0). MWCC ignored the overrun and clang
+    // builds have no _FORTIFY_SOURCE, but Ubuntu's GCC enables it and __memcpy_chk aborts the
+    // process ("buffer overflow detected", SIGABRT at the first room after the prologue).
+    /* 0x6DC */ char mArcName[4];
     /* 0x6E0 */ u32 mShadowId;
     /* 0x6E4 */ u8 field_0x6E4[0x6E8 - 0x6E4];
     /* 0x6E8 */ mDoExt_btkAnm mBtkAnm;

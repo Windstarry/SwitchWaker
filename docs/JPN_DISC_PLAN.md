@@ -248,3 +248,44 @@ on (the cut keeps polling the deleted message). Real players can open the host m
 dialogue, so USA/PAL have the same latent bug - it is just far less likely there. A fix would
 make specialProcMessage's PUSHBUTTON (d_event_data.cpp) detect the deleted process (SearchByID
 per frame) and end its cut; left to its own lane.
+
+## The aarch64 handheld build: four runtime fixes (2026-10-21/22)
+
+Context: the JPN build cross-compiled for aarch64 with g++-12 in the focal portmaster image
+(Ubuntu's GCC adds `-D_FORTIFY_SOURCE=2` and `-fstack-protector-strong`, which the clang builds
+do not), relinked with g++-14 for Aurora's newer-distro Dawn prebuilt plus five glibc 2.32/2.38
+shims, and run on ROCKNIX 20261016 (glibc 2.40, GLIBCXX_3.4.33, Mali-G52, sway). Four crashes
+in a row, each one only reachable after the previous was fixed:
+
+1. **`char mArcName[3]` (`d_a_npc_zl1.h`).** `decideType` runs `strcpy(mArcName, "Zl2")`, 4 bytes
+   with the NUL. `__memcpy_chk` aborted the process (`*** buffer overflow detected ***`,
+   SIGABRT) creating the first room after the prologue (frame 8349). "Zl2" is the only actor
+   name in the game that is 4 bytes (every other is 2 chars + NUL); the GameCube struct always
+   had the byte at 0x6DF before `mShadowId` (0x6E0), so the array is [4] now.
+2. **The JPN message heap was not doubled.** Decision H5 doubled the USA/PAL 0xa32d heap for the
+   host's larger `dMesg_outFont_c`, but the `VERSION <= VERSION_JPN` branch kept the GameCube's
+   0x9f2d. The host log showed it: `heap: cannot alloc 0x40 bytes ... EXPH heap ... size 0x9e20,
+   free 0x28 ... frame 8721` - the 18th font's `JUTPalette` allocation returned NULL and
+   `JUTTexture::attachPalette(NULL)` read `mPalette->mTlutName` (SIGSEGV addr=0x28). The JPN size
+   is `0x9f2d * 2` on TARGET_PC now, like every other message heap.
+3. **`ruby_character` returned a dead stack buffer.** The decomp returns `char buffer[3]` by
+   address; GCC 12 at -O2 knows that address cannot be used and folds the return to NULL
+   (`mov x0, #0`), so `do_systemTagCode` ran `strcat(field_0x97, NULL)` (SIGSEGV addr=0x0, the
+   first message with a ruby tag: frames 9983 and 11019). The buffer is static now, which keeps
+   the caller's immediate `strcat` working as on the GameCube.
+4. **`cardicon.arc` can be unmounted under the save thread** (`mDoMemCdRWm_BuildHeader`).
+   `JKRArchive::mount` hands out one object per entry number (`check_mount_already`,
+   `mMountCount++`), so the file-select screen and the card thread can share the archive; a save
+   in that window found it unmounted and `arc->getResource` asserted `isMounted()`
+   (JKRArchivePub.cpp:337 in JPN) - `Halt`, frame 12482. The header now zeroes the icon area and
+   skips the copy when the archive is missing or unmounted, with an OSReport that says which.
+
+Reached on the device before each stop: logo-res 8.5 s, opening 9.2 s, title 18.5 s, file-select
+51.5 s, new-game ~84 s, then sea room 44 (`outset-real`). State of the four: 1 and 2 are
+verified by the run that went past both; 3 and 4 are implemented and uploaded but not yet
+verified past the frame each used to die at (no automatic run has reached them again). The full
+regression suite has not been rerun for any of them.
+
+Build-side note: Aurora patch `0022-pad-trigger-axis-buttons.patch` was committed upstream with
+CRLF line endings (and `switch/native/aurora/patches/0017-switch-deko3d-depth-copies.patch`
+likewise), which makes `git apply` fail inside the Linux build container. Both are LF now.

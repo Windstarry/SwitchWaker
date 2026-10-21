@@ -249,15 +249,37 @@ void mDoMemCdRWm_BuildHeader(mDoMemCdRWm_HeaderData* header) {
 #else
     snprintf(header->info, sizeof(header->info), HEADER_COMMENT, cal.month + 1, cal.day_of_month);
 #endif
+    // The icons are optional: a card whose archive cannot be mounted still gets a valid save.
+    memset(header->banner, 0, sizeof(header->banner));
+    memset(header->icon, 0, sizeof(header->icon));
+
     mDoDvdThd_mountArchive_c* cmd = mDoDvdThd_mountArchive_c::create("/res/CardIcon/cardicon.arc", 0, NULL);
-    while (!cmd->sync()) ;
-    JKRArchive* arc = cmd->getArchive();
-    ResTIMG* banner = (ResTIMG*)arc->getResource("ipl_banner.bti");
-    ResTIMG* icon = (ResTIMG*)arc->getResource("ipl_icon1.bti");
-    memcpy(header->banner, ((char*)banner) + banner->imageOffset, 0xc00 + banner->numColors * 2);
-    memcpy(header->icon, ((char*)icon) + icon->imageOffset, 0x400 + icon->numColors * 2);
-    JKRUnmountArchive(arc);
-    delete cmd;
+    // create() returns NULL when the disc has no such entry; the decomp dereferenced it.
+    if (cmd != NULL) {
+        while (!cmd->sync()) ;
+        JKRArchive* arc = cmd->getArchive();
+        // JKRArchive::mount hands out one object per entry number (check_mount_already,
+        // mMountCount++), so the file-select screen's cardicon.arc and the card thread's can be
+        // the same archive: a save during that window found it already unmounted, and
+        // arc->getResource asserted isMounted() (JKRArchivePub.cpp:337) and killed the process
+        // ("Halt", frame 12482). Skip the icons instead of dying; the save data does not use them.
+        if (arc != NULL && arc->isMounted()) {
+            ResTIMG* banner = (ResTIMG*)arc->getResource("ipl_banner.bti");
+            ResTIMG* icon = (ResTIMG*)arc->getResource("ipl_icon1.bti");
+            if (banner != NULL && icon != NULL) {
+                memcpy(header->banner, ((char*)banner) + banner->imageOffset, 0xc00 + banner->numColors * 2);
+                memcpy(header->icon, ((char*)icon) + icon->imageOffset, 0x400 + icon->numColors * 2);
+            } else {
+                OSReport("mDoMemCdRWm_BuildHeader: cardicon.arc lacks ipl_banner/ipl_icon1 (%p %p)\n", banner, icon);
+            }
+            JKRUnmountArchive(arc);
+        } else {
+            OSReport("mDoMemCdRWm_BuildHeader: cardicon.arc not mounted (%p)\n", arc);
+        }
+        delete cmd;
+    } else {
+        OSReport("mDoMemCdRWm_BuildHeader: no /res/CardIcon/cardicon.arc on the disc\n");
+    }
 }
 
 /* 8001A0A8-8001A1EC       .text mDoMemCdRWm_SetCardStat__FP12CARDFileInfo */
