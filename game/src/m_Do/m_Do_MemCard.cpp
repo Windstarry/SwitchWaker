@@ -174,9 +174,16 @@ void mDoMemCd_Ctrl_c::restore() {
 /* 8001906C-80019174       .text store__15mDoMemCd_Ctrl_cFv */
 void mDoMemCd_Ctrl_c::store() {
     CARDFileInfo cardInfo;
-    s32 ret;
+    s32 ret = CARD_ERROR_READY;
+#if TARGET_PC
+    // Field diagnostics for the handheld's "cannot save" report.
+    OSReport("mDoMemCd store: entry state=%d\n", field_0x1660);
+#endif
     if (field_0x1660 == 2) {
         ret = CARDCreate(mCardSlot, "gczelda", 0x18000, &cardInfo);
+#if TARGET_PC
+        OSReport("mDoMemCd store: CARDCreate=%d\n", ret);
+#endif
         if (ret == CARD_ERROR_READY)
             field_0x1660 = 1;
         else if (ret == CARD_ERROR_EXIST)
@@ -187,8 +194,14 @@ void mDoMemCd_Ctrl_c::store() {
 
     if (field_0x1660 == 1) {
         ret = CARDOpen(mCardSlot, "gczelda", &cardInfo);
+#if TARGET_PC
+        OSReport("mDoMemCd store: CARDOpen=%d\n", ret);
+#endif
         if (ret == CARD_ERROR_READY) {
             ret = mDoMemCdRWm_Store(&cardInfo, mData, sizeof(mData));
+#if TARGET_PC
+            OSReport("mDoMemCd store: mDoMemCdRWm_Store=%d\n", ret);
+#endif
             if (ret != CARD_ERROR_READY)
                 setCardState(ret);
             else
@@ -198,6 +211,9 @@ void mDoMemCd_Ctrl_c::store() {
             setCardState(ret);
         }
     } else {
+#if TARGET_PC
+        OSReport("mDoMemCd store: create failed, state=%d\n", field_0x1660);
+#endif
         setCardState(ret);
     }
 }
@@ -254,10 +270,13 @@ s32 mDoMemCd_Ctrl_c::SaveSync() {
         if (field_0x1660 == 4) {
             field_0x1660 = 1;
             ret = 1;
-#if VERSION > VERSION_JPN
         } else if (field_0x1660 == 1) {
+            // Not done yet: 0 means "keep waiting" to every caller (d_menu_save's JPN branch
+            // needs res != 0 to act, and only res == 1 is a success). The decomp guarded this
+            // branch with VERSION > VERSION_JPN, which made the Japan build report 2 (failure)
+            // on the first poll of every save: the card thread had not finished writing yet,
+            // so the "cannot save" message appeared although the save went through.
             ret = 0;
-#endif
         } else {
             ret = 2;
         }

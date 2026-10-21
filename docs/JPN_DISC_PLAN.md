@@ -286,6 +286,38 @@ verified by the run that went past both; 3 and 4 are implemented and uploaded bu
 verified past the frame each used to die at (no automatic run has reached them again). The full
 regression suite has not been rerun for any of them.
 
+## The save path: SaveSync's missing "busy" result (2026-10-22)
+
+On the device the save completed (the card's `.gci` was written) but the save screen kept
+answering "cannot save". The card layer was fine: the log had no CARD errors, and the file's
+mtime moved with each attempt. The defect is in `mDoMemCd_Ctrl_c::SaveSync()`: its
+`else if (field_0x1660 == 1) ret = 0` branch (0 = still busy) was wrapped in
+`#if VERSION > VERSION_JPN`, so the Japan build answered 2 (failure) for every state other than
+4 (done). `d_menu_save`'s JPN branch acts on `res != 0` and treats 2 as the failure message, so
+the first poll of a save - taken before the card thread had finished - always produced "cannot
+save", while the write itself went through. The branch is unconditional now.
+
+The same file also carries temporary field diagnostics (`OSReport` of the state passed to
+CARDCreate/CARDOpen/mDoMemCdRWm_Store and of the write/read-back checksums); they are listed as
+outstanding below.
+
+## Outstanding (2026-10-22)
+
+- The save fix is built and uploaded, but not yet verified on the device: the "cannot save"
+  message must stay away and the save must round-trip after a restart.
+- Remove the temporary `OSReport` diagnostics in `mDoMemCd_Ctrl_c::store()` and
+  `mDoMemCdRWm_Store` once the save is verified.
+- Fixes 3 (`ruby_character`) and 4 (`cardicon.arc` guard) have not yet been verified past their
+  frames in one run together.
+- The full regression suite has not been rerun with the per-disc `when`/`unless` filter.
+- The event-manager `PUSHBUTTON` deadlock (a scene change kills the message the cut waits on)
+  is still open; it is described in the section above.
+- The aarch64 build recipe and the ROCKNIX launcher are outside git (`build/` scripts and the
+  device's `roms/ports/SwitchWaker.sh`); decide whether they belong in the repository.
+- The Chinese-modified image (1,028,904,960 bytes, swapped in for the Japanese one) boots and
+  reaches the same milestones, but it has not been checked against `docs/RUNTIME_ASSETS.md`'s
+  revision-0 expectation.
+
 Build-side note: the repository stores Aurora patch `0022-pad-trigger-axis-buttons.patch` and
 `switch/native/aurora/patches/0017-switch-deko3d-depth-copies.patch` with LF, but `core.autocrlf`
 checked those two working-tree copies out with CRLF, and the container's `git apply` then refused
