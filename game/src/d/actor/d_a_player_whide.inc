@@ -14,7 +14,20 @@
 #include "d/actor/d_a_player_HIO.h"
 #include "d/actor/d_a_player_main.h"
 
-/* 8013707C-801371E0       .text setBlendWHideMoveAnime__9daPy_lk_cFf */
+#if TARGET_PC
+// procWHideWait and procWHideMove run before this frame's mAcch.CrrPos (daPy_lk_c::execute,
+// d_a_player_main.cpp), so mAcch.m_gnd is the floor polygon of the previous frame, and its
+// collision can have been removed since (a moving BG's actor deleted, a room's collision
+// unloaded). cBgS::GetTriPla returns NULL for that, and the retail code read the normal through
+// NULL; on the host that is a fault. No plane counts as no ground, as the game's own checked
+// callers treat it (daPy_lk_c::getGroundAngle, changeHangMoveProc's ChkPolySafe).
+static bool daPy_whideChkBGround(cBgS_PolyInfo& i_gnd) {
+    cM3dGPla* pla = dComIfG_Bgsp()->GetTriPla(i_gnd);
+    return pla != NULL && cBgW_CheckBGround(pla->GetNP()->y);
+}
+#endif
+
+/* 8013707C-801371E0      .text setBlendWHideMoveAnime__9daPy_lk_cFf */
 void daPy_lk_c::setBlendWHideMoveAnime(f32 param_0) {
     f32 anm_speed_0;
     f32 morf;
@@ -388,7 +401,11 @@ BOOL daPy_lk_c::procWHideWait() {
     }
 
     if (mStickDistance > 0.05f && -G_CM3D_F_INF != mAcch.GetGroundH() &&
+#if TARGET_PC
+        daPy_whideChkBGround(mAcch.m_gnd))
+#else
         cBgW_CheckBGround(dComIfG_Bgsp()->GetTriPla(mAcch.m_gnd)->GetNP()->y))
+#endif
     {
         int direction = getDirectionFromCurrentAngle();
         if (direction == DIR_RIGHT || direction == DIR_LEFT) {
@@ -456,7 +473,11 @@ BOOL daPy_lk_c::procWHideMove() {
     if (checkWHideModeChange(&acStack_24) != 0) {
         fVar2 = 0.0f;
     } else if (mStickDistance > 0.05f && -G_CM3D_F_INF != mAcch.GetGroundH() &&
+#if TARGET_PC
+               daPy_whideChkBGround(mAcch.m_gnd))
+#else
                cBgW_CheckBGround(dComIfG_Bgsp()->GetTriPla(mAcch.m_gnd)->GetNP()->y))
+#endif
     {
         int direction = getDirectionFromCurrentAngle();
         if (direction == DIR_BACKWARD) {
@@ -495,7 +516,11 @@ BOOL daPy_lk_c::procWHideMove() {
     if (std::fabsf(mNormalSpeed) <= 0.001f) {
         return procWHideWait_init();
     }
+#if TARGET_PC
+    if (mAcch.GetGroundH() == -G_CM3D_F_INF || !daPy_whideChkBGround(mAcch.m_gnd) ||
+#else
     if (mAcch.GetGroundH() == -G_CM3D_F_INF || !cBgW_CheckBGround(dComIfG_Bgsp()->GetTriPla(mAcch.m_gnd)->GetNP()->y) ||
+#endif
         !checkWHideBackWall(&cStack_30))
     {
         mNormalSpeed = 0.0f;
