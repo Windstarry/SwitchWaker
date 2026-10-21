@@ -314,6 +314,16 @@ void daTag_Island_c::demoProcCom_ikada() {
         ikada->mCurPathP0 = ikada->mInitPos;
         ikada->current.pos = ikada->mCurPathP0;
         ikada->mCurPathPoint = 0;
+#if TARGET_PC
+        // fopAcM_searchFromName returns the first "ikada_h" of the stage, which can be a raft
+        // that has no path (daObj_Ikada_c::createInit only sets mpPath for types 1, 3 and 4 with
+        // a path id): the retail game then reads the path points through a NULL mpPath, low
+        // memory on the console and a fault on the host. Keep the position reset and leave the
+        // path targets as they are.
+        if (ikada->mpPath == NULL) {
+            return;
+        }
+#endif
         ikada->m02CC = ikada->mpPath->m_points[ikada->mCurPathPoint].m_position;
         ikada->mCurPathP1 = ikada->mpPath->m_points[ikada->mCurPathPoint + 1].m_position;
         ikada->mPathPosTarget = ikada->mpPath->m_points[ikada->mCurPathPoint].m_position;
