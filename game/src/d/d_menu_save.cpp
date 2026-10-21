@@ -1025,9 +1025,10 @@ void dMenu_save_c::dataWrite() {
     mDoMemCdRWm_SetCheckSumGameData(dataBuf, dComIfGs_getDataNum());
     mDoMemCd_Save(dataBuf, sizeof(dataBuf), 0);
 
-#if VERSION >= VERSION_USA
+    // All versions latch the first SaveSync result here, as the USA/PAL builds do: it is the
+    // path the handheld port is verified with, and the Japan build's own variant (poll every
+    // frame, no latch) is what left the save screen in "saving" forever.
     field_0x540 = mDoMemCd_SaveSync();
-#endif
 }
 
 /* 801D8A18-801D8BB8       .text memCardDataSaveWait__12dMenu_save_cFv */
@@ -1035,30 +1036,16 @@ void dMenu_save_c::memCardDataSaveWait() {
     BOOL alphaMsg_rt = PaneAlphaMsgTxt(field_0x544, g_msHIO.field_0x29);
     field_0x544++;
 
-#if VERSION <= VERSION_JPN
-    int res = mDoMemCd_SaveSync();
-#else
     if (field_0x540 == 0) {
         field_0x540 = mDoMemCd_SaveSync();
     }
-#endif
 
-#if VERSION <= VERSION_JPN
-    if (res != 0 && alphaMsg_rt == TRUE)
-#else
-    if (field_0x540 != 0 && alphaMsg_rt == TRUE)
-#endif
-    {
+    if (field_0x540 != 0 && alphaMsg_rt == TRUE) {
         field_0x536 ^= 1;
         field_0x544 = 0;
         field_0x534 = g_msHIO.field_0x28;
 
-#if VERSION <= VERSION_JPN
-        if (res == 1)
-#else
-        if (field_0x540 == 1)
-#endif
-        {
+        if (field_0x540 == 1) {
             mDoAud_seStart(JA_SE_SAVE_FINISH, NULL);
             dComIfGs_exchangePlayerRecollectionData();
             dComIfGs_setMemCardCheckID(mDoMemCd_getCardSerialNo());
@@ -1068,12 +1055,7 @@ void dMenu_save_c::memCardDataSaveWait() {
             proc = PROC_MSG_WAIT;
             field_0x52d = PROC_SAVE_END_WAIT;
         }
-#if VERSION <= VERSION_JPN
-        else if (res == 2)
-#else
-        else if (field_0x540 == 2)
-#endif
-        {
+        else if (field_0x540 == 2) {
             mDoAud_seStart(JA_SE_ALERT_DATA, NULL);
             fopMsgM_messageGet(field_0x51c[field_0x536 ^ 1], 0x3D);
             proc = PROC_MSG_WAIT2;

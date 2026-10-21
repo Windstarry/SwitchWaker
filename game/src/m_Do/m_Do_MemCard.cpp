@@ -12,6 +12,7 @@
 #if TARGET_PC
 #include "cos_card_extras.h" // CARD_ERROR_* (Aurora spells them CARD_RESULT_*)
 #include "dolphin/dvd/dvd.h" // DVDGetCurrentDiskID, for CARDInit below
+#include <stdio.h>           // setvbuf: the card thread's diagnostics go to stdout
 #endif
 #include "global.h"
 #include "string.h"
@@ -86,10 +87,19 @@ void mDoMemCd_Ctrl_c::ThdInit() {
 
 /* 80018E18-80018EC8       .text main__15mDoMemCd_Ctrl_cFv */
 void mDoMemCd_Ctrl_c::main() {
+#if TARGET_PC
+    // The game's OSReport is vprintf(stdout) (game/src/dolphin/os/OSError.c) and stdout is
+    // block-buffered when it goes to log.txt, so diagnostics written right before a hang never
+    // reach the file. Unbuffered from here on: the card thread starts with the game loop.
+    setvbuf(stdout, NULL, _IONBF, 0);
+#endif
     while (true) {
         OSLockMutex(&mMutex);
         while (mCommand == CARD_NO_COMMAND)
             OSWaitCond(&mCond, &mMutex);
+#if TARGET_PC
+        OSReport("mDoMemCd main: command=%d state=%d\n", mCommand, field_0x1660);
+#endif
 
 #if VERSION == VERSION_DEMO
         if (mDoRst::isReset()) {
@@ -229,7 +239,12 @@ void mDoMemCd_Ctrl_c::command_format() {
 
 /* 800191C4-80019238       .text save__15mDoMemCd_Ctrl_cFPvUlUl */
 void mDoMemCd_Ctrl_c::save(void* data, u32 size, u32 offset) {
-    if (OSTryLockMutex(&mMutex)) {
+    BOOL locked = OSTryLockMutex(&mMutex);
+#if TARGET_PC
+    // Field diagnostics: does the save request reach the card thread at all?
+    OSReport("mDoMemCd save: trylock=%d state=%d\n", locked, field_0x1660);
+#endif
+    if (locked) {
         memcpy(&mData[offset], data, size);
         mCommand = CARD_STORE;
         OSUnlockMutex(&mMutex);

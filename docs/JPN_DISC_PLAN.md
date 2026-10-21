@@ -297,16 +297,26 @@ mtime moved with each attempt. The defect is in `mDoMemCd_Ctrl_c::SaveSync()`: i
 the first poll of a save - taken before the card thread had finished - always produced "cannot
 save", while the write itself went through. The branch is unconditional now.
 
-The same file also carries temporary field diagnostics (`OSReport` of the state passed to
-CARDCreate/CARDOpen/mDoMemCdRWm_Store and of the write/read-back checksums); they are listed as
-outstanding below.
+Fixing SaveSync alone then left the screen at "saving" forever: the Japan build's save screen
+polls `mDoMemCd_SaveSync()` every frame and had no latch, while the USA/PAL builds latch the
+first result in `field_0x540` (`dataWrite` takes one poll right after `mDoMemCd_Save`,
+`memCardDataSaveWait` only polls while it is 0). The USA flow is the one the handheld port is
+verified with, so the Japan build now uses it too: `dataWrite` takes that first poll for every
+version and `memCardDataSaveWait` is the USA body without the `VERSION <= VERSION_JPN`
+variants. Verified on the device: the save completes and the screen returns to the game.
+
+Diagnostics note: the game's `OSReport` is the weak `vprintf(stdout)` in
+`game/src/dolphin/os/OSError.c`, and stdout is block-buffered when the launcher redirects it to
+`log.txt`, so lines written just before a hang never reached the file. The card thread now calls
+`setvbuf(stdout, NULL, _IONBF, 0)` before its loop. The same files still carry temporary
+`OSReport` field diagnostics; they are listed as outstanding below.
 
 ## Outstanding (2026-10-22)
 
-- The save fix is built and uploaded, but not yet verified on the device: the "cannot save"
-  message must stay away and the save must round-trip after a restart.
-- Remove the temporary `OSReport` diagnostics in `mDoMemCd_Ctrl_c::store()` and
-  `mDoMemCdRWm_Store` once the save is verified.
+- The save (both halves: SaveSync's busy result and the USA save-screen flow) is verified on the
+  device; a restart-and-load round trip has not been checked yet.
+- Remove the temporary `OSReport` diagnostics in `mDoMemCd_Ctrl_c::save()`, `main()`, `store()`
+  and `mDoMemCdRWm_Store` (the save is verified; they are only field instrumentation).
 - Fixes 3 (`ruby_character`) and 4 (`cardicon.arc` guard) have not yet been verified past their
   frames in one run together.
 - The full regression suite has not been rerun with the per-disc `when`/`unless` filter.
