@@ -355,6 +355,10 @@ const Smoke kSmokes[] = {
     {"camera-invert", kInGame},
     {"picto-box", kInGame},
     {"dmap", kInGame},
+    {"sea-chart", kInGame},
+    {"button-remap", kInGame},
+    {"mail-sort", kInGame},
+    {"menu-backdrop", kInGame},
     {"stage-hop", kInGame},
     {"event-sweep", kInGame},
 };

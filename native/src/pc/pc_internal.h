@@ -340,6 +340,15 @@ void kyProcsFrame(unsigned int frames);
 void chestFrame(unsigned int frames);
 // COS_SMOKE=dmap (pc_dmap.cpp, issue #6): the dungeon map screen draws its rooms.
 void dmapFrame(unsigned int frames);
+// COS_SMOKE=sea-chart (pc_sea_chart.cpp, issue #14): the sea chart finds each island from its sector.
+void seaChartFrame(unsigned int frames);
+// COS_SMOKE=button-remap (pc_button_remap.cpp, issue #15): the per-action remap reaches the game (Mac:
+// SDL virtual gamepads).
+void buttonRemapFrame(unsigned int frames);
+// COS_SMOKE=mail-sort (pc_mail_sort.cpp, issue #19): each sorting-game letter is drawn with its own image.
+void mailSortFrame(unsigned int frames);
+// COS_SMOKE=menu-backdrop (pc_menu_backdrop.cpp, issue #20): the pause menu opens over the current frame.
+void menuBackdropFrame(unsigned int frames);
 // COS_SMOKE=item-sweep (pc_item_sweep.cpp): every item through a chest's item-get demo.
 void itemSweepFrame(unsigned int frames);
 // Save/load sweep (pc_save_sweep.cpp): COS_SMOKE=save-sweep saves through the save screen's steps,
@@ -444,6 +453,9 @@ bool menuSmokeWantsRunCard();
 bool menuBuiltinSetting(const char* key);
 void menuFrame();
 bool menuOpen();
+// pc_menu.cpp, for COS_SMOKE=button-remap: the menu's tab (PcSettingTab), the selected row of that
+// tab and the action being captured on the Controles tab (pc::remap::Action; -1: none).
+void menuSmokeState(int* tab, int* row, int* captureAction);
 // pc_menu.cpp: after aurora_end_frame of game frame `frame` (the screenshot action, and
 // COS_SMOKE=options-menu's checks).
 void menuFrameEnd(unsigned int frame);
