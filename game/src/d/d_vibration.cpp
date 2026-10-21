@@ -33,6 +33,16 @@ namespace {
     }
 
     u32 rollshift(u32 pattern, s32 patt_len, s32 cur_idx) {
+#if TARGET_PC
+        // patt_len can be 0: in Run's shock + quake cases the length is the shock's remaining
+        // frames (mLength - mCurrentFrame), 0 when a quake starts on the shock's last frame, and
+        // a quake's own length is whatever its caller passed. The GameCube's divw does not trap
+        // on a zero divisor (nor does AArch64's sdiv); an x86-64 idiv raises SIGFPE. A 0-bit
+        // pattern has nothing to roll, and its callers start a 0-frame shake with it.
+        if (patt_len <= 0) {
+            return pattern;
+        }
+#endif
         s32 loop_num = cur_idx/patt_len;
         s32 loop_start = loop_num * patt_len;
         s32 pos_in_loop = cur_idx - loop_start;
@@ -46,6 +56,15 @@ namespace {
     u32 makebits(u32 pattern, s32 patt_len, s32 numbits) {
         /* Extends a pattern to numbits bits by looping it */
         int i;
+#if TARGET_PC
+        // patt_len can be 0 too (StartQuake(u8 const*, ...) passes the pattern's low length byte):
+        // the loop below would never end (i += 0), and the mask's shift by 32 is undefined: the
+        // console's slw gives a mask of 0, x86-64 and AArch64 a mask of all ones. Return what the
+        // console's mask leaves, 0.
+        if (patt_len <= 0) {
+            return 0;
+        }
+#endif
         u32 masked = pattern & -1 << (0x20 - patt_len);
         pattern = masked;
         for (i = patt_len; i < numbits; i += patt_len){
