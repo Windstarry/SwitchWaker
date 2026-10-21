@@ -132,7 +132,24 @@ run_one() { # line
 export -f run_one
 export out build script_dir capped
 
-grep -v '^\s*#' "$targets_file" | grep -v '^\s*$' |
+# Disc-specific target lines: a line may end in " when GZLJ01" or " unless GZLJ01" (one game
+# id); it only runs on that build (e.g. the JPN variant of the menu travel input, which skips
+# the Dragon Roost arrival dialogue chain the USA script warps through).
+filter_targets() {
+    local line cond
+    while IFS= read -r line; do
+        case "$line" in
+            *" when "*)
+                cond="${line##* when }"
+                [ "$cond" = "$game_id" ] && printf '%s\n' "${line%% when *}" ;;
+            *" unless "*)
+                cond="${line##* unless }"
+                [ "$cond" != "$game_id" ] && printf '%s\n' "${line%% unless *}" ;;
+            *) printf '%s\n' "$line" ;;
+        esac
+    done
+}
+grep -v '^\s*#' "$targets_file" | grep -v '^\s*$' | filter_targets |
     xargs -P "$jobs" -I{} bash -c 'run_one "$@"' _ {} > "$out/runs.txt"
 while read -r status rest; do
     name="${rest%% *}"
