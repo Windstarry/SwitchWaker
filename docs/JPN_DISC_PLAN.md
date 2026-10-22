@@ -330,21 +330,29 @@ logic runs; see that document), which is enough for every check here - all of th
    "saved file 1 on sea (return place sea room 44 point 128)" at frame 3182.
 2. **Full regression on the JPN build, with the per-disc filter.** `native/tools/regress.sh -j 4`
    in the Linux build image, the Redump GZLJ01 image, `COS_BUILD_DIR=build/native-linux-jpn`. The
-   `when`/`unless GZLJ01` lines work: only `options-menu ... menu-travel-save-jpn.txt` runs, the
-   USA line is skipped. Five target lines fail on their first JPN run, all for JPN reasons
-   rather than game code:
-   - `msg-sweep`: the Japanese routing is the TODO named in "Verification (pending)" - 4304 of
-     4316 indexes differ in how many characters the JMessage processor read, and the two font
-     checks compare against the USA font names (`rock_24_20_4i_usa.bfn`, `hyrule.bfn`).
-   - `j3d-sweep`: 50 manifest differences, all `/res/Stage/sea/LODALL.arc` LOD models the sweep
-     never loads ("J3D2 file of the manifest not loaded").
-   - `save`: the smoke's card-header checks are USA/PAL only: it wants an ASCII printable comment
-     and " Save Data" in the info field, while the JPN header is the Japanese title and
-     "<date>のセーブデータ" (the bytes themselves round-trip correctly).
-   - `outset-control` (its two lines, plain and uncapped): both time out (720 s) after the scripted
-     stick hold moves the player 293.2 units - just under M13's 300-unit threshold. The JPN intro
-     event ends at a different frame than the USA one, so the hold covers a different path; the
-     player is controllable, the threshold is what misses.
+   `when`/`unless GZLJ01` lines work (the JPN `menu-travel-save-jpn.txt` target ran and passed,
+   the USA line was skipped) and `options-menu` passes on this build. **93 checks, 17 failed** -
+   the first full run of the suite on the Japanese build; the USA build passes it. The failures,
+   by class:
+   - **Two crashes in Aurora's FIFO accounting** (exit 13, 36 min into the run): `npc-variants`
+     (frame 446) and `shore-foam` (frame 298) die in the Aurora FIFO thread with
+     `[fatal] [aurora::gx::fifo] FIFO processing range [X, X+5) is outside buffered range [X, X)`,
+     both early in `sea/Room0.arc`. Not JPN game code; the display-list FIFO's range bookkeeping -
+     the two targets to bisect first.
+   - **Seven timeouts under the software renderer** (exit 10, 720 s): `outset-control` x3,
+     `outset-real` (QOL skip-intro), `telescope-demo` x2, `stage-hop`. The JPN paths reach fewer
+     frames per second (and `outset-control`'s scripted hold moves the player 293.2 units, just
+     under M13's 300 threshold: the JPN intro event ends at a different frame than the USA one,
+     so the hold covers a slightly different path).
+   - **JPN text/paging related check failures** (exit 1): `msg-sweep` (the Japanese routing TODO:
+     4304 of 4316 indexes differ in the characters the JMessage processor read, and the font
+     checks name the USA files), `save` (the card-header checks want the USA/PAL ASCII comment and
+     " Save Data"; JPN writes the Japanese title and "<date>のセーブデータ", and the bytes
+     round-trip correctly), `item-sweep` (the item-get event never ends), `mail-sort` (5 letters
+     thrown of the 20 wanted), `picto-box` (the subject check saw nothing in the photo),
+     `sun-glare --aspect 16:9` (the 4:3 line passes), `button-remap`.
+   - `j3d-sweep` (exit 1): 50 manifest differences, all `/res/Stage/sea/LODALL.arc` LOD models the
+     sweep never loads ("J3D2 file of the manifest not loaded").
    - `static-init`/`crash-test`/`panic-test`/`stall-test`/`timeout-test` exit non-zero by design
      (their lines in `regress_targets.txt` expect those codes).
 3. **The event-manager `PUSHBUTTON` deadlock: fixed, end-to-end check still pending.**
@@ -370,6 +378,11 @@ logic runs; see that document), which is enough for every check here - all of th
    `run.sh`/`disc_manifest.py --verify` rejects it (exit 14) and every host-side check must use the
    Redump image, while the runtime's disc check (ID, region, revision) accepts it. That is why the
    device boots it.
+
+Still open, as a worklist: the two Aurora FIFO aborts (`npc-variants`, `shore-foam`), the seven
+timeouts (the software renderer's frame budget and M13's 300-unit hold), the JPN expectations of
+`msg-sweep`/`save`/`item-sweep`/`mail-sort`/`picto-box`/`sun-glare 16:9`/`button-remap` and the
+`j3d-sweep` LOD entries, and the dedicated check for the PUSHBUTTON fix.
 
 Build-side note: the repository stores Aurora patch `0022-pad-trigger-axis-buttons.patch` and
 `switch/native/aurora/patches/0017-switch-deko3d-depth-copies.patch` with LF, but `core.autocrlf`
