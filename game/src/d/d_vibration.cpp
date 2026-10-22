@@ -8,6 +8,7 @@
 #include "d/d_com_inf_game.h"
 #if TARGET_PC
 #include "pc/pc_controls.h"
+#include "pc/pc_harness.h"
 #endif
 #include "d/d_camera.h"
 #include "m_Do/m_Do_controller_pad.h"
@@ -40,6 +41,7 @@ namespace {
         // on a zero divisor (nor does AArch64's sdiv); an x86-64 idiv raises SIGFPE. A 0-bit
         // pattern has nothing to roll, and its callers start a 0-frame shake with it.
         if (patt_len <= 0) {
+            pc_vibration_guard(PC_VIB_GUARD_ROLLSHIFT);
             return pattern;
         }
 #endif
@@ -48,7 +50,12 @@ namespace {
         s32 pos_in_loop = cur_idx - loop_start;
 
         u32 lo = pattern >> pos_in_loop;
+#if TARGET_PC
+        // A 32-bit loop at its first bit shifts by 32: undefined in C, 0 from the console's slw.
+        u32 hi = patt_len - pos_in_loop >= 32 ? 0 : pattern << (patt_len - pos_in_loop);
+#else
         u32 hi = pattern << (patt_len - pos_in_loop);
+#endif
 
         return lo | hi;
     }
@@ -57,12 +64,16 @@ namespace {
         /* Extends a pattern to numbits bits by looping it */
         int i;
 #if TARGET_PC
-        // patt_len can be 0 too (StartQuake(u8 const*, ...) passes the pattern's low length byte):
-        // the loop below would never end (i += 0), and the mask's shift by 32 is undefined: the
-        // console's slw gives a mask of 0, x86-64 and AArch64 a mask of all ones. Return what the
-        // console's mask leaves, 0.
-        if (patt_len <= 0) {
-            return 0;
+        // patt_len can be 0 or above 32: StartQuake(u8 const*, ...) passes the low byte of the
+        // pattern's 16-bit length, 0..255 (an event's "Pattern" with a length of 0x0028, say). With 0
+        // the loop below never ends (i += 0). The mask's shift count, 0x20 - patt_len, is then 32 or
+        // negative, undefined in C: x86-64 and AArch64 take it modulo 32, the console's slw takes its
+        // low 6 bits and gives 0 from 32 up. Compute the console's mask; for these lengths the loop
+        // adds nothing (no bits for 0, i = patt_len >= numbits above 32).
+        if (patt_len <= 0 || patt_len > 32) {
+            pc_vibration_guard(PC_VIB_GUARD_MAKEBITS);
+            const u32 shift = (u32)(0x20 - patt_len) & 0x3F;
+            return shift < 32 ? pattern & (0xFFFFFFFFu << shift) : 0;
         }
 #endif
         u32 masked = pattern & -1 << (0x20 - patt_len);
