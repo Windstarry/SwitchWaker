@@ -68,6 +68,14 @@ fi
 export COS_DISC="${COS_DISC:-$GAMEDIR/GZLJ01.iso}"
 export COS_BACKEND="${COS_BACKEND:-opengles}"
 
+# These handhelds have a 1280x720 panel (DSI-1: 720x1280 with the 270 transform). The default
+# window is 960x720 and the frontend's fullscreen then stretches the 4:3 picture over 16:9, which
+# looks oversized and cropped; the widescreen option makes the window exactly 1280x720 and draws
+# the picture at that shape (docs/WIDESCREEN.md), and borderless fullscreen keeps the compositor
+# from scaling it. Set COS_ASPECT=4:3 (and COS_FULLSCREEN=0) to get the pillarboxed original.
+export COS_ASPECT="${COS_ASPECT:-16:9}"
+export COS_FULLSCREEN="${COS_FULLSCREEN:-1}"
+
 # zip extraction loses the exec bit on the game binary.
 chmod +x "$GAMEDIR/switchwaker" 2>/dev/null
 
