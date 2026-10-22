@@ -379,6 +379,14 @@ logic runs; see that document), which is enough for every check here - all of th
    Redump image, while the runtime's disc check (ID, region, revision) accepts it. That is why the
    device boots it.
 
+The second test board, after its kernel was switched to the Mali blob driver (192.168.31.17,
+`/dev/mali0`, DDK r54p2), renders through Vulkan instead of running the null backend: `log.txt` reads
+`backend=vulkan window=1280x720 framebuffer=1280x720`. Its panel is 1280x720 while the port's default
+window is 960x720, so the frontend's fullscreen stretched the 4:3 picture over the panel and cropped
+it; the launcher now defaults to `COS_ASPECT=16:9` + `COS_FULLSCREEN=1`, which puts the picture on
+the panel without scaling (verified with a `grim` capture of the title screen).
+`docs/HANDHELD_BUILD.md`, "Display: the 1280x720 panel".
+
 Still open, as a worklist: the two Aurora FIFO aborts (`npc-variants`, `shore-foam`), the seven
 timeouts (the software renderer's frame budget and M13's 300-unit hold), the JPN expectations of
 `msg-sweep`/`save`/`item-sweep`/`mail-sort`/`picto-box`/`sun-glare 16:9`/`button-remap` and the

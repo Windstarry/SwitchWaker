@@ -22,7 +22,8 @@ roms/ports/SwitchWaker/
 The launcher is the PortMaster-standard script (controlfolder, `get_controls`, `gptokeyb`,
 `pm_finish`). Its environment: `SDL_VIDEODRIVER=wayland` on ROCKNIX (kmsdrm + the Mali blob
 directory on LD_LIBRARY_PATH on KMS/DRM firmwares), `COS_DISC` naming the disc, `COS_BACKEND`
-(`opengles` by default; Aurora falls back to Vulkan and then to its null backend).
+(`opengles` by default; Aurora falls back to Vulkan and then to its null backend), and
+`COS_ASPECT=16:9` with `COS_FULLSCREEN=1` for the 1280x720 panel (see Display below).
 
 Do **not** put a Debian `libstdc++.so.6` (a port's `libs.aarch64/`) on LD_LIBRARY_PATH: the binary
 needs no library newer than the firmware, and a Debian `libstdc++` only shadows the firmware's own.
@@ -87,6 +88,27 @@ So the game runs on such a board with the null backend: no picture, but the game
 messages, memory card and saves work, which is enough to verify the port there. Boards whose
 firmware provides the blob (kernel with `mali_kbase`, `/dev/mali0`) or a GL ES 3.2 / Vulkan 1.1
 driver with the two features above render normally.
+
+## Display: the 1280x720 panel
+
+The verification board's panel is 1280x720 (DSI-1 reports 720x1280 with a 270 transform, so sway's
+logical output is 1280x720 at scale 1). The port's default window is 960x720 - the 4:3 picture at 720
+points - and the frontend presents a window fullscreen by stretching it over the whole panel, so the
+first picture on the device was that 4:3 output enlarged and cropped on all four sides.
+
+The launcher sets both options for these boards:
+
+```
+export COS_ASPECT="${COS_ASPECT:-16:9}"       # 1280x720 window, the picture drawn at that shape (docs/WIDESCREEN.md)
+export COS_FULLSCREEN="${COS_FULLSCREEN:-1}"  # borderless fullscreen; the compositor does not scale it again
+```
+
+Verified on the second test board once its kernel ran the Mali blob (Vulkan rendering instead of the
+null backend): `log.txt` reads `[aurora] Using framebuffer size 1280x720 scale 1` and
+`[cos] aurora: backend=vulkan window=1280x720 framebuffer=1280x720`, and a `grim -o DSI-1` capture
+of the title screen shows the whole picture - the logo with its margins, the sea to both sides and
+the complete "请按下START键" line. `COS_ASPECT=4:3` with `COS_FULLSCREEN=0` gives the original
+GameCube picture, pillarboxed in a 960x720 window.
 
 ## Verified on the device
 
