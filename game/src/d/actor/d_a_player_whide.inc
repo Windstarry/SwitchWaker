@@ -27,7 +27,7 @@ static bool daPy_whideChkBGround(cBgS_PolyInfo& i_gnd) {
 }
 #endif
 
-/* 8013707C-801371E0      .text setBlendWHideMoveAnime__9daPy_lk_cFf */
+/* 8013707C-801371E0       .text setBlendWHideMoveAnime__9daPy_lk_cFf */
 void daPy_lk_c::setBlendWHideMoveAnime(f32 param_0) {
     f32 anm_speed_0;
     f32 morf;
@@ -101,6 +101,13 @@ cM3dGPla* daPy_lk_c::getWHideModePolygon(cXyz* i_start, cXyz* i_end, cXyz* param
     }
 
     cM3dGPla* triPla = dComIfG_Bgsp()->GetTriPla(mLinkLinChk);
+#if TARGET_PC
+    // As in procWHideWait: the wall polygon of mLinkLinChk can have lost its collision (and with
+    // i_start NULL, mLinkLinChk is the one an earlier call set). No plane, no wall to sidle along.
+    if (triPla == NULL) {
+        return NULL;
+    }
+#endif
     s16 sVar7 = cM_atan2s(triPla->GetNP()->x, triPla->GetNP()->z);
     if (std::fabsf(triPla->GetNP()->y) > 0.05f) {
         return NULL;
@@ -117,7 +124,11 @@ cM3dGPla* daPy_lk_c::getWHideModePolygon(cXyz* i_start, cXyz* i_end, cXyz* param
     local_3c.z = param_2->z + cM_ssin(sVar7) * m_HIO->mWall.m.field_0x50;
     mGndChk.SetPos(&local_3c);
     f32 f31 = dComIfG_Bgsp()->GroundCross(&mGndChk);
+#if TARGET_PC
+    if (-G_CM3D_F_INF != f31 && !daPy_whideChkBGround(mGndChk)) {
+#else
     if (-G_CM3D_F_INF != f31 && !cBgW_CheckBGround(dComIfG_Bgsp()->GetTriPla(mGndChk)->GetNP()->y)) {
+#endif
         return NULL;
     }
 
@@ -140,6 +151,11 @@ cM3dGPla* daPy_lk_c::getWHideModePolygon(cXyz* i_start, cXyz* i_end, cXyz* param
         }
         cM3dGPla* triPla;
         triPla = dComIfG_Bgsp()->GetTriPla(mLinkLinChk);
+#if TARGET_PC
+        if (triPla == NULL) {
+            return NULL;
+        }
+#endif
         if (sVar7 != cM_atan2s(triPla->GetNP()->x, triPla->GetNP()->z)) {
             return NULL;
         }
@@ -158,6 +174,11 @@ cM3dGPla* daPy_lk_c::getWHideModePolygon(cXyz* i_start, cXyz* i_end, cXyz* param
         }
         cM3dGPla* triPla;
         triPla = dComIfG_Bgsp()->GetTriPla(mLinkLinChk);
+#if TARGET_PC
+        if (triPla == NULL) {
+            return NULL;
+        }
+#endif
         int iVar4 = cM_atan2s(triPla->GetNP()->x, triPla->GetNP()->z);
         if (sVar7 != iVar4) {
             return NULL;
