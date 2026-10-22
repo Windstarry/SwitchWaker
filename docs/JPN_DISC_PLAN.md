@@ -281,10 +281,8 @@ in a row, each one only reachable after the previous was fixed:
    skips the copy when the archive is missing or unmounted, with an OSReport that says which.
 
 Reached on the device before each stop: logo-res 8.5 s, opening 9.2 s, title 18.5 s, file-select
-51.5 s, new-game ~84 s, then sea room 44 (`outset-real`). State of the four: 1 and 2 are
-verified by the run that went past both; 3 and 4 are implemented and uploaded but not yet
-verified past the frame each used to die at (no automatic run has reached them again). The full
-regression suite has not been rerun for any of them.
+51.5 s, new-game ~84 s, then sea room 44 (`outset-real`). State of the four: all four are verified
+on the second test device, see "Checking the five open items" below.
 
 ## The save path: SaveSync's missing "busy" result (2026-10-22)
 
@@ -314,21 +312,70 @@ to find the save defect (and the `setvbuf` that made them visible) have been rem
 only `OSReport`s left in the card code are the three real failure reports in
 `mDoMemCdRWm_BuildHeader` (missing archive, unmounted archive, missing banner/icon).
 
-## Outstanding (2026-10-22)
+## Checking the five open items (2026-10-22, second test device)
 
-- Fixes 3 (`ruby_character`) and 4 (`cardicon.arc` guard) have not yet been verified past their
-  frames in one run together.
-- The full regression suite has not been rerun with the per-disc `when`/`unless` filter.
-- The event-manager `PUSHBUTTON` deadlock (a scene change kills the message the cut waits on)
-  is still open; it is described in the section above.
-- The aarch64 build recipe and the ROCKNIX launcher are outside git (`build/` scripts and the
-  device's `roms/ports/SwitchWaker.sh`); decide whether they belong in the repository.
-- The Chinese-modified image (1,028,904,960 bytes, swapped in for the Japanese one) boots and
-  reaches the same milestones, but it has not been checked against `docs/RUNTIME_ASSETS.md`'s
-  revision-0 expectation.
+The checks below ran on a ROCKNIX RK3566 handheld (192.168.31.16, 4 GB, mainline Panfrost) with
+the aarch64 JPN build of this source (docs/HANDHELD_BUILD.md), deployed as
+`roms/ports/SwitchWaker/` + a launcher. Its GPU path is the null backend (no picture, the game's own
+logic runs; see that document), which is enough for every check here - all of them are CPU-side.
+
+1. **Fixes 3 (`ruby_character`) and 4 (`cardicon.arc`): verified in one run.**
+   `COS_INPUT=new-game.txt`, empty card folder, `COS_FRAMES=14500`: the prologue ended at frame
+   7993, the intro dialogue event ran 8034-10809 (the window in which `ruby_character` used to
+   fault, frames 9983/11019 on the first device), the player was free at 10809, `outset-real`
+   logged at frame 12420 and the run reached 14500 and exited 0 - no `SIGSEGV`, `Halt` or assert
+   anywhere in the log. The same run created the save file at the name scene, so
+   `mDoMemCdRWm_BuildHeader` built the card header (the `cardicon.arc` copy). On the device,
+   `COS_SMOKE=save-sweep --stage sea:44:206` also saved through `d_menu_save`'s own steps: PASS,
+   "saved file 1 on sea (return place sea room 44 point 128)" at frame 3182.
+2. **Full regression on the JPN build, with the per-disc filter.** `native/tools/regress.sh -j 4`
+   in the Linux build image, the Redump GZLJ01 image, `COS_BUILD_DIR=build/native-linux-jpn`. The
+   `when`/`unless GZLJ01` lines work: only `options-menu ... menu-travel-save-jpn.txt` runs, the
+   USA line is skipped. Five target lines fail on their first JPN run, all for JPN reasons
+   rather than game code:
+   - `msg-sweep`: the Japanese routing is the TODO named in "Verification (pending)" - 4304 of
+     4316 indexes differ in how many characters the JMessage processor read, and the two font
+     checks compare against the USA font names (`rock_24_20_4i_usa.bfn`, `hyrule.bfn`).
+   - `j3d-sweep`: 50 manifest differences, all `/res/Stage/sea/LODALL.arc` LOD models the sweep
+     never loads ("J3D2 file of the manifest not loaded").
+   - `save`: the smoke's card-header checks are USA/PAL only: it wants an ASCII printable comment
+     and " Save Data" in the info field, while the JPN header is the Japanese title and
+     "<date>のセーブデータ" (the bytes themselves round-trip correctly).
+   - `outset-control` (its two lines, plain and uncapped): both time out (720 s) after the scripted
+     stick hold moves the player 293.2 units - just under M13's 300-unit threshold. The JPN intro
+     event ends at a different frame than the USA one, so the hold covers a different path; the
+     player is controllable, the threshold is what misses.
+   - `static-init`/`crash-test`/`panic-test`/`stall-test`/`timeout-test` exit non-zero by design
+     (their lines in `regress_targets.txt` expect those codes).
+3. **The event-manager `PUSHBUTTON` deadlock: fixed, end-to-end check still pending.**
+   `specialProcMessage` now searches the message by ID every frame (`fopMsgM_SearchByID`), clears
+   `l_msg` and ends the cut when the process is gone, and `FINISH`/`END` tolerate the cleared
+   pointer (the old code asserted on it). It could not be proven end to end yet: the ARRIVAL_DRG2
+   scenario of "The ARRIVAL_DRG2 hang" (the shared USA input, warp in the middle of the chain, JPN
+   build, 2500 frames) still ends with event 38 "awake" running at frame 1806 and the warp target
+   never reaches PLAY - and its log cannot tell a dead cut from a message that is merely paged and
+   waiting for A. A dedicated check (A through the chain, or a test that deletes the message and
+   observes the cut end) remains.
+4. **The aarch64 recipe and the launcher: in the repository now.** The launcher is
+   `native/tools/handheld/SwitchWaker.sh`, the five glibc shims the relink needs are
+   `native/tools/handheld/dawn_compat.cpp`, and `docs/HANDHELD_BUILD.md` describes the image, the
+   compiler/relink step, the runtime environment and the Panfrost limitation found on this board.
+   The throwaway host scripts under `build/` stay out (they name the build machine's paths).
+5. **The Chinese-modified image: checked against `docs/RUNTIME_ASSETS.md`'s revision-0 rule.**
+   1,028,904,960 bytes; header GZLJ01, disc 0, revision 0, magic `C2339F3D`; FST offset 0x3B7500
+   size 0xDA2C with 2337 entries and 2159 files, the last one ending at 1,028,903,882 - an exact
+   trim (78 bytes of padding), every file inside the image. But the image SHA-1
+   (`5f38e658…`) and the main.dol SHA-1 (`551aaad5…`, 3,770,400 bytes) differ from revision 0's
+   (`1c4b574d…` / `995406d9…`), so the modification is in the game's own code as well as the text:
+   `run.sh`/`disc_manifest.py --verify` rejects it (exit 14) and every host-side check must use the
+   Redump image, while the runtime's disc check (ID, region, revision) accepts it. That is why the
+   device boots it.
 
 Build-side note: the repository stores Aurora patch `0022-pad-trigger-axis-buttons.patch` and
 `switch/native/aurora/patches/0017-switch-deko3d-depth-copies.patch` with LF, but `core.autocrlf`
 checked those two working-tree copies out with CRLF, and the container's `git apply` then refused
 them (the configure died on 0022). Normalizing the two worktree files to LF fixes it; no
-repository change is needed.
+repository change is needed. The same applies to the check inputs: with
+`native/check/regress_targets.txt` in CRLF every target that takes `--input` failed as a usage
+error (`COS_INPUT …\r: cannot open`) because the trailing CR stays in the argument; normalizing it
+to LF makes the suite run.
