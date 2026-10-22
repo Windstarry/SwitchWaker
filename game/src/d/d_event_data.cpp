@@ -302,8 +302,11 @@ void dEvDtStaff_c::specialProcMessage() {
         }
         case ACT_FINISH:
         case ACT_END:
-            JUT_ASSERT(0x1D8, l_msg);
-            l_msg->mStatus = fopMsgStts_MSG_ENDS_e;
+            // A PUSHBUTTON cut whose message process was deleted (see below) clears l_msg, and
+            // the script then runs FINISH with nothing left to close: do not assert on it.
+            if (l_msg) {
+                l_msg->mStatus = fopMsgStts_MSG_ENDS_e;
+            }
             break;
         case ACT_CONTINUE:
         {
@@ -354,10 +357,20 @@ void dEvDtStaff_c::specialProcMessage() {
         }
         break;
     case ACT_PUSHBUTTON:
-        JUT_ASSERT(0x209, l_msg);
-        if (l_msg->mStatus == fopMsgStts_MSG_DISPLAYED_e) {
+    {
+        // Search by id every frame instead of trusting the cached pointer: a scene change (the
+        // host menu during a dialogue) can delete the message process, and the cached l_msg
+        // then dangles while the cut keeps polling it, stalling the event forever. A process
+        // that is gone ends the cut, as a displayed message does.
+        msg_class* msg = fopMsgM_SearchByID(l_msgId);
+        if (msg == NULL || msg->mStatus == fopMsgStts_MSG_DISPLAYED_e) {
+            if (msg == NULL) {
+                l_msg = NULL;
+                l_msgId = fpcM_ERROR_PROCESS_ID_e;
+            }
             dComIfGp_evmng_cutEnd(staffIdx);
         }
+    }
         break;
     case ACT_FINISH:
     case ACT_DELETE:
@@ -374,6 +387,11 @@ void dEvDtStaff_c::specialProcMessage() {
         dComIfGp_evmng_cutEnd(staffIdx);
         break;
     case ACT_END:
+        // The message can be gone by the time the cut reaches END (see PUSHBUTTON above).
+        if (!l_msg) {
+            dComIfGp_evmng_cutEnd(staffIdx);
+            break;
+        }
         switch (l_msg->mStatus) {
         case fopMsgStts_BOX_CLOSING_e:
         case fopMsgStts_BOX_CLOSED_e:
