@@ -68,13 +68,43 @@ fi
 export COS_DISC="${COS_DISC:-$GAMEDIR/GZLJ01.iso}"
 export COS_BACKEND="${COS_BACKEND:-opengles}"
 
-# These handhelds have a 1280x720 panel (DSI-1: 720x1280 with the 270 transform). The default
-# window is 960x720 and the frontend's fullscreen then stretches the 4:3 picture over 16:9, which
-# looks oversized and cropped; the widescreen option makes the window exactly 1280x720 and draws
-# the picture at that shape (docs/WIDESCREEN.md), and borderless fullscreen keeps the compositor
-# from scaling it. Set COS_ASPECT=4:3 (and COS_FULLSCREEN=0) to get the pillarboxed original.
-export COS_ASPECT="${COS_ASPECT:-16:9}"
+# The window follows the device, nothing here fixes a resolution: COS_FULLSCREEN=1 asks SDL for a
+# fullscreen window, so its size is the panel's own mode (1280x720 on this board, 1920x1080 on a
+# 1080p one) instead of the desktop window's 960x720, and the compositor never scales it.
 export COS_FULLSCREEN="${COS_FULLSCREEN:-1}"
+
+# The picture's shape must be known before the window exists (the game reads COS_ASPECT in static
+# initialisers), so take it from the panel's mode: a 16:9 panel gets the widescreen option (content
+# framebuffer = the panel's own resolution), a 4:3 one the original GameCube picture, which Aurora
+# pillarboxes in the fullscreen window.
+if [ -z "$COS_ASPECT" ]; then
+  for f in /sys/class/drm/card*-DSI-*/modes /sys/class/drm/card*-eDP-*/modes \
+           /sys/class/drm/card*-LVDS-*/modes /sys/class/drm/card*-*/modes; do
+    [ -s "$f" ] || continue
+    mode=$(head -n 1 "$f")
+    w=${mode%x*}
+    h=${mode#*x}
+    [ "$w" != "$mode" ] || continue
+    case "$w" in '' | *[!0-9]*) continue ;; esac
+    case "$h" in '' | *[!0-9]*) continue ;; esac
+    [ "$h" -gt 0 ] || continue
+    # A panel's mode can arrive rotated (this DSI one is 720x1280), so compare its long side.
+    if [ "$w" -lt "$h" ]; then
+      t=$w
+      w=$h
+      h=$t
+    fi
+    if [ $((w * 100)) -ge $((h * 170)) ]; then
+      COS_ASPECT=16:9
+    elif [ $((w * 100)) -ge $((h * 152)) ]; then
+      COS_ASPECT=16:10
+    else
+      COS_ASPECT=4:3
+    fi
+    break
+  done
+  export COS_ASPECT="${COS_ASPECT:-16:9}"
+fi
 
 # zip extraction loses the exec bit on the game binary.
 chmod +x "$GAMEDIR/switchwaker" 2>/dev/null
