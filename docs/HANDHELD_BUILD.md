@@ -23,7 +23,7 @@ The launcher is the PortMaster-standard script (controlfolder, `get_controls`, `
 `pm_finish`). Its environment: `SDL_VIDEODRIVER=wayland` on ROCKNIX (kmsdrm + the Mali blob
 directory on LD_LIBRARY_PATH on KMS/DRM firmwares), `COS_DISC` naming the disc, `COS_BACKEND`
 (`opengles` by default; Aurora falls back to Vulkan and then to its null backend), and
-`COS_ASPECT=16:9` with `COS_FULLSCREEN=1` for the 1280x720 panel (see Display below).
+`COS_FULLSCREEN=1` with `COS_ASPECT` derived from the panel's mode (see Display below).
 
 Do **not** put a Debian `libstdc++.so.6` (a port's `libs.aarch64/`) on LD_LIBRARY_PATH: the binary
 needs no library newer than the firmware, and a Debian `libstdc++` only shadows the firmware's own.
@@ -89,26 +89,37 @@ messages, memory card and saves work, which is enough to verify the port there. 
 firmware provides the blob (kernel with `mali_kbase`, `/dev/mali0`) or a GL ES 3.2 / Vulkan 1.1
 driver with the two features above render normally.
 
-## Display: the 1280x720 panel
+## Display: the panel decides the size
 
-The verification board's panel is 1280x720 (DSI-1 reports 720x1280 with a 270 transform, so sway's
-logical output is 1280x720 at scale 1). The port's default window is 960x720 - the 4:3 picture at 720
-points - and the frontend presents a window fullscreen by stretching it over the whole panel, so the
-first picture on the device was that 4:3 output enlarged and cropped on all four sides.
+The launcher fixes no resolution. `COS_FULLSCREEN=1` has SDL create the window at the panel's own
+mode, so the 960x720 `windowWidth`/`windowHeight` of `pc_main.cpp` (the desktop window) never reach
+the screen and the compositor has nothing to scale; the picture's height is therefore the panel's
+height on any board. Without fullscreen the frontend starts the 960x720 window itself and stretches
+that 4:3 picture over the whole panel, which is the enlarged, cropped picture seen on the device
+before this.
 
-The launcher sets both options for these boards:
+The picture's shape still has to be chosen before the window exists: the game reads `COS_ASPECT` in
+its static initialisers (the widescreen option's camera and HUD constants), before Aurora has a
+window to measure. The launcher therefore derives it from the panel's mode - the first line of
+`/sys/class/drm/card*-DSI-*/modes`, then eDP and LVDS, then any connector, compared by its long side
+because a DSI mode can arrive rotated:
 
 ```
-export COS_ASPECT="${COS_ASPECT:-16:9}"       # 1280x720 window, the picture drawn at that shape (docs/WIDESCREEN.md)
-export COS_FULLSCREEN="${COS_FULLSCREEN:-1}"  # borderless fullscreen; the compositor does not scale it again
+# 16:9 from 1.70, 16:10 from 1.52, 4:3 below; COS_ASPECT still overrides it
+export COS_FULLSCREEN="${COS_FULLSCREEN:-1}"
 ```
+
+On this board the panel reports 720x1280 (DSI-1, 270 transform, so sway's logical output is
+1280x720 at scale 1) and the launcher picks 16:9: the content framebuffer is then the panel's own
+1280x720. A 4:3 panel gets 4:3 and Aurora presents the GameCube picture pillarboxed in the
+fullscreen window (Aurora patch 0006, `AURORA_VIEWPORT_FIT`); 1280x800, 1920x1080 and 640x480 map to
+16:10, 16:9 and 4:3.
 
 Verified on the second test board once its kernel ran the Mali blob (Vulkan rendering instead of the
 null backend): `log.txt` reads `[aurora] Using framebuffer size 1280x720 scale 1` and
-`[cos] aurora: backend=vulkan window=1280x720 framebuffer=1280x720`, and a `grim -o DSI-1` capture
-of the title screen shows the whole picture - the logo with its margins, the sea to both sides and
-the complete "请按下START键" line. `COS_ASPECT=4:3` with `COS_FULLSCREEN=0` gives the original
-GameCube picture, pillarboxed in a 960x720 window.
+`[cos] aurora: backend=vulkan window=1280x720 framebuffer=1280x720`, and a `grim -o DSI-1` capture of
+the title screen fills the panel with no bars and no cropping. `COS_ASPECT=4:3` with
+`COS_FULLSCREEN=0` gives the original picture in the 960x720 desktop window instead.
 
 ## Verified on the device
 

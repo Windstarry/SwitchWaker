@@ -11,8 +11,8 @@ whose translated build applies that code as a mod (`mods/widescreen/GZLE01.gecko
 The native port (`native/`, the decompilation built for the Mac and the Switch) has no executable to
 patch: the 16:9 code is done in C under `#if TARGET_PC`, as a run option, and the GameCube build of the
 decompilation is unchanged. `COS_ASPECT=4:3` (the default on the Mac), `16:9` (the default on the
-Switch, set by `switch/native/source/cos_switch.cpp`, and on the aarch64 handhelds, whose 1280x720
-panel matches the 16:9 window - see docs/HANDHELD_BUILD.md) or `16:10` selects it
+Switch, set by `switch/native/source/cos_switch.cpp`; on an aarch64 handheld the launcher derives it
+from the panel's mode, see docs/HANDHELD_BUILD.md) or `16:10` selects it
 (`native/include/pc/pc_aspect.h`). A wider aspect makes the window that wide at 720 points (1280x720,
 1152x720) and Aurora presents the 640x480 picture stretched to the aspect, letterboxed or pillarboxed in
 a window of another shape (`AuroraSetFitAspect`, Aurora patch 0006): the game draws an anamorphic

@@ -383,9 +383,10 @@ The second test board, after its kernel was switched to the Mali blob driver (19
 `/dev/mali0`, DDK r54p2), renders through Vulkan instead of running the null backend: `log.txt` reads
 `backend=vulkan window=1280x720 framebuffer=1280x720`. Its panel is 1280x720 while the port's default
 window is 960x720, so the frontend's fullscreen stretched the 4:3 picture over the panel and cropped
-it; the launcher now defaults to `COS_ASPECT=16:9` + `COS_FULLSCREEN=1`, which puts the picture on
-the panel without scaling (verified with a `grim` capture of the title screen).
-`docs/HANDHELD_BUILD.md`, "Display: the 1280x720 panel".
+it; the launcher now runs fullscreen at the panel's own mode and derives `COS_ASPECT` from that mode
+(16:9 here), so the content framebuffer is the panel's resolution and nothing is scaled (verified
+with a `grim` capture of the title screen). `docs/HANDHELD_BUILD.md`, "Display: the panel decides the
+size".
 
 Still open, as a worklist: the two Aurora FIFO aborts (`npc-variants`, `shore-foam`), the seven
 timeouts (the software renderer's frame budget and M13's 300-unit hold), the JPN expectations of
