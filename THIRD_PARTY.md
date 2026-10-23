@@ -77,6 +77,8 @@ and depende3000, and the SwitchWaker contributors.
 | [nod](https://github.com/encounter/nod) | Aurora's prebuilt package (Mac only; the Switch uses `switch/native/nod`) | disc reader | MIT OR Apache-2.0 (check) |
 | [RecompCore](https://github.com/elliotttate/RecompCore) (Dolphin) | `8ab24da` | Dolphin's DSP HLE sources (`native/tools/fetch_recompcore.sh`) | GPL-2.0-or-later |
 | [libnx](https://github.com/switchbrew/libnx), [devkitA64](https://devkitpro.org) | pinned devkitPro image digest | Switch runtime and toolchain | ISC (libnx); toolchain runtime libraries under their own licenses |
+| [curl](https://curl.se) (libcurl) | devkitPro's `switch-curl` in the pinned image (7.69.1, TLS through libnx's ssl service); the system's on the desktop, when found | the update check and download (`native/src/pc/features/pc_update.cpp`) | curl (MIT-style) |
+| [zlib](https://zlib.net) | devkitPro's `switch-zlib`; Aurora's (system or bundled) on the desktop | reading the release zip (`pc_update_core.cpp`), uam | Zlib |
 | [nx-hbloader](https://github.com/switchbrew/nx-hbloader) | v2.4.5 (`82b9512`) | HOME-menu forwarder (optional) | ISC |
 | [hacBrewPack](https://github.com/TooTallNate/hacBrewPack) | v3.05 (`745b16e`) | packs the forwarder NSP (build tool only, not shipped) | GPL-2.0 |
 | [hactool](https://github.com/SciresM/hactool) | in the devkitPro image (check) | verifies the forwarder NSP (build tool only) | ISC |

@@ -47,7 +47,8 @@ typedef enum PcSettingTab {
     PC_SETTING_TAB_QOL = 2,         /* "Calidad de vida" (pc_qol.h) */
     PC_SETTING_TAB_DEBUG = 3,       /* "Depuración" */
     PC_SETTING_TAB_CONTROLS = 4,    /* "Controles" (pc_button_remap.h, issue #15) */
-    PC_SETTING_TABS = 5
+    PC_SETTING_TAB_SYSTEM = 5,      /* "Sistema" (pc_update.h, issues #27/#28) */
+    PC_SETTING_TABS = 6
 } PcSettingTab;
 
 typedef enum PcOperationMode {
@@ -63,6 +64,7 @@ typedef enum PcOperationMode {
 #define PC_SETTING_SWITCH_ONLY 0x8u /* shown on the Mac, but only the Switch acts on it */
 #define PC_SETTING_REMAP 0x10u     /* a button remap action (pc_button_remap.h): the menu shows it as a
                                       "press a button" row, not a row that cycles its choices */
+#define PC_SETTING_HIDDEN 0x20u    /* kept in the settings file, no menu row (e.g. COS_UPDATE_SKIP) */
 
 typedef struct PcSettingChoice {
     const char* value; /* as in the environment variable, e.g. "1.5" */

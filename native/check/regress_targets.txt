@@ -142,6 +142,13 @@ options-menu 0 --preset sailing --input native/check/input/menu-warp-conducting.
 # "Valores originales" (every row off)
 options-menu 0 --stage sea:11:0 --input native/check/input/menu-qol-preset.txt
 options-menu 0 --stage sea:11:0 --input native/check/input/menu-qol-original.txt
+# issues #27/#28 (pc_update.h): the update check at start on the title screen with the fixture release
+# native/check/update (v9.9.9, as version 0.4.2): the popup's "Actualizar ahora" installs it into the
+# run directory; "No avisar de esta versión" saves COS_UPDATE_SKIP and installs nothing; "Ver notas de la
+# versión" opens the notes page.
+options-menu 0 --input native/check/input/menu-update.txt
+options-menu 0 --input native/check/input/menu-update-skip.txt
+options-menu 0 --input native/check/input/menu-update-notes.txt
 # QoL "Barco sin restricciones" (COS_QOL_FREE_BOAT): the sailing smoke before Dragon Roost's arrival (0x0902
 # cleared) crosses into room 18, which the boat's story path 0 forbids then (it fails with the option off), and
 # with neither 0x1980 nor 0x0A80 the boat still offers "get in" (the reboard fails with the option off)

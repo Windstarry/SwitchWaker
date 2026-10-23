@@ -11,6 +11,10 @@
 #          switch/switchwaker/switchwaker.nro (build/switch-native-eur/switchwaker-eur.nro, renamed),
 #          initial_pipeline_cache.db, initial_dksh_cache.bin
 #
+# The in-game update (native/src/pc/features/pc_update.cpp, issues #27/#28) finds these zips on the GitHub
+# release by name (SwitchWaker-<tag>-switch.zip / -switch-eur.zip with their .sha256) and installs every
+# file under switch/switchwaker/ in them: keep the names, the .sha256 and the layout.
+#
 # One region per SD card: both zips install switch/switchwaker/switchwaker.nro, the path the HOME-menu
 # forwarder starts, so they conflict on purpose (INSTALL.md: to change region, the other zip's
 # switchwaker.nro and the matching disc image). The caches are the same files in both.
