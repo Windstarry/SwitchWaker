@@ -33,19 +33,37 @@ if (COS_RUNTIME_ASSETS)
     target_compile_definitions(cos_pc PRIVATE COS_RUNTIME_ASSETS=1)
 endif ()
 target_include_directories(cos_pc PRIVATE "${COS_NATIVE_ROOT}/src/pc")
-# pc_update_core.cpp (issues #27, #28) reads the release zip with zlib's inflate; Aurora provides
-# ZLIB::ZLIB on every host (the system's or its own), the Switch build the portlib's. Link only: its
-# include directory can be the SDK's usr/include (the Mac), which as an -isystem ahead of libc++'s
-# headers breaks <cmath>; the header's directory goes last instead (-idirafter).
-if (TARGET ZLIB::ZLIB)
-    target_link_libraries(cos_pc PRIVATE $<LINK_ONLY:ZLIB::ZLIB>)
-    get_target_property(_cos_zlib_inc ZLIB::ZLIB INTERFACE_INCLUDE_DIRECTORIES)
-    if (_cos_zlib_inc)
-        foreach (_d IN LISTS _cos_zlib_inc)
+# The update (issues #27, #28): pc_update_core.cpp reads the release zip with zlib's inflate (Aurora
+# provides ZLIB::ZLIB on every host, the system's or its own; the Switch build the portlib's), and
+# pc_update.cpp fetches over HTTPS with libcurl where there is one (COS_HAVE_CURL: the Switch's
+# switch-curl, set up in switch/native/CMakeLists.txt; the desktop's when found; without it only
+# file:// URLs work). Link only: their include directory can be the SDK's usr/include (the Mac), which
+# as an -isystem ahead of libc++'s headers breaks <cmath>; it goes last instead (-idirafter).
+function(cos_update_link_lib _lib)
+    foreach (_t IN LISTS ARGN)
+        target_link_libraries(${_t} PRIVATE $<LINK_ONLY:${_lib}>)
+    endforeach ()
+    get_target_property(_inc ${_lib} INTERFACE_INCLUDE_DIRECTORIES)
+    if (_inc)
+        foreach (_d IN LISTS _inc)
             set_property(SOURCE "${COS_NATIVE_ROOT}/src/pc/features/pc_update_core.cpp"
-                    "${COS_NATIVE_ROOT}/check/update_tests.cpp" APPEND PROPERTY COMPILE_OPTIONS "-idirafter${_d}")
+                    "${COS_NATIVE_ROOT}/src/pc/features/pc_update.cpp" "${COS_NATIVE_ROOT}/check/update_tests.cpp"
+                    APPEND PROPERTY COMPILE_OPTIONS "-idirafter${_d}")
         endforeach ()
     endif ()
+endfunction()
+if (TARGET ZLIB::ZLIB)
+    cos_update_link_lib(ZLIB::ZLIB cos_pc)
+endif ()
+if (NOT CMAKE_CROSSCOMPILING AND NOT TARGET CURL::libcurl)
+    find_package(CURL QUIET)
+endif ()
+if (TARGET CURL::libcurl)
+    cos_update_link_lib(CURL::libcurl cos_pc)
+    set_property(SOURCE "${COS_NATIVE_ROOT}/src/pc/features/pc_update.cpp" APPEND PROPERTY COMPILE_DEFINITIONS COS_HAVE_CURL=1)
+    message(STATUS "cos_native: update over HTTPS with libcurl")
+else ()
+    message(STATUS "cos_native: no libcurl: the update reads only file:// URLs")
 endif ()
 # pc_main.cpp (step 6.1) sets cos_sdk's thread hooks (cos_sdk/hooks.h); switchwaker itself links cos_sdk.
 target_include_directories(cos_pc PRIVATE "${COS_NATIVE_ROOT}/sdk/include")
@@ -111,10 +129,14 @@ endif ()
 # plain host program.  ninja cos_update_tests && build/native-mac/cos_update_tests
 if (TARGET ZLIB::ZLIB AND NOT CMAKE_CROSSCOMPILING)
     add_executable(cos_update_tests "${COS_NATIVE_ROOT}/check/update_tests.cpp"
-            "${COS_NATIVE_ROOT}/src/pc/features/pc_update_core.cpp")
-    target_include_directories(cos_update_tests PRIVATE "${COS_NATIVE_ROOT}/src/pc")
+            "${COS_NATIVE_ROOT}/src/pc/features/pc_update_core.cpp" "${COS_NATIVE_ROOT}/src/pc/features/pc_update.cpp")
+    target_include_directories(cos_update_tests PRIVATE "${COS_NATIVE_ROOT}/src/pc" "${COS_NATIVE_ROOT}/include")
+    target_compile_definitions(cos_update_tests PRIVATE COS_UPDATE_HOST_TEST=1)
     target_compile_features(cos_update_tests PRIVATE cxx_std_20)
-    target_link_libraries(cos_update_tests PRIVATE $<LINK_ONLY:ZLIB::ZLIB>)
+    cos_update_link_lib(ZLIB::ZLIB cos_update_tests)
+    if (TARGET CURL::libcurl)
+        cos_update_link_lib(CURL::libcurl cos_update_tests)
+    endif ()
     set_target_properties(cos_update_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
 endif ()
 

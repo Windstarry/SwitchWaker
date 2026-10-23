@@ -5,18 +5,26 @@
 //
 // Versions and their order, SHA-256 (FIPS 180-4's examples), the GitHub release JSON, the install
 // names, the zip reader (stored and deflated entries, CRC, truncated and non-zip files) and the
-// install journal. pc_update_core.cpp needs no game code, so this is a plain host program (cos_pc_tests
+// install journal; then the whole flow of pc_update.cpp (compiled with COS_UPDATE_HOST_TEST, file://
+// fixtures in a temporary directory): check, install, first start confirmed, a first start that does
+// not get past the logo (rollback, not offered again at start), an interrupted swap, a bad checksum,
+// a zip with a file outside switch/switchwaker/, a release without this region's zip, a failed
+// check and a development version. pc_update_core.cpp and pc_update.cpp need no game code, so this is a plain host program (cos_pc_tests
 // links the game's operator new, which needs JKRHeap). Prints "ok" and exits 0 when every check
 // passes; otherwise prints each failed check and exits 1.
 #include "../src/pc/features/pc_update_core.h"
+#include "pc/pc_update.h"
 
 #include <zlib.h>
 
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <chrono>
 #include <cstring>
 #include <string>
+#include <thread>
+#include <sys/stat.h>
 #include <unistd.h>
 #include <utility>
 #include <vector>
@@ -260,10 +268,320 @@ void testUpdateCore() {
     }
 }
 
+// ---- the whole flow (pc_update.cpp) ------------------------------------------------------------------
+
+extern "C" void pc_update_test_reset(void);
+
+void writeAll(const std::string& path, const std::string& data) {
+    FILE* f = std::fopen(path.c_str(), "wb");
+    std::fwrite(data.data(), 1, data.size(), f);
+    std::fclose(f);
+}
+
+bool fileExists(const std::string& path) { return access(path.c_str(), F_OK) == 0; }
+
+PcUpdateInfo waitIdle(int seconds = 10) {
+    PcUpdateInfo info;
+    for (int k = 0; k < seconds * 200; k++) {
+        pc_update_get_info(&info);
+        if (info.status != PC_UPDATE_CHECKING && info.status != PC_UPDATE_DOWNLOADING &&
+            info.status != PC_UPDATE_INSTALLING) {
+            // the worker clears its job just after publishing
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+            pc_update_get_info(&info);
+            return info;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    return info;
+}
+
+struct Fixture {
+    std::string root, dir, rel;
+    std::string newNro = std::string(200000, 'N') + "new nro", newDb = "new pipeline db", newDksh = "new dksh";
+
+    // A release v0.5.1 whose USA zip holds `files`; the .sha256 is the zip's unless `badSha`.
+    void release(const std::vector<std::pair<std::string, std::string>>& files, bool badSha = false,
+                 bool usaZip = true) {
+        const std::string zipName = "SwitchWaker-v0.5.1-switch.zip";
+        const std::string zip = makeZip(files, true);
+        writeAll(rel + "/" + zipName, zip);
+        pc::update::Sha256 sha;
+        sha.update(zip.data(), zip.size());
+        uint8_t d[32];
+        sha.final(d);
+        std::string hex = pc::update::toHex(d, 32);
+        if (badSha) {
+            hex[0] = hex[0] == '0' ? '1' : '0';
+        }
+        writeAll(rel + "/" + zipName + ".sha256", hex + "  " + zipName + "\n");
+        const std::string name = usaZip ? zipName : "SwitchWaker-v0.5.1-switch-eur.zip";
+        writeAll(rel + "/latest.json",
+                 "{\"tag_name\":\"v0.5.1\",\"name\":\"SwitchWaker v0.5.1\",\"html_url\":\"https://example/r\",\"assets\":["
+                 "{\"name\":\"" + name + "\",\"size\":" + std::to_string(zip.size()) +
+                 ",\"browser_download_url\":\"file://" + rel + "/" + zipName + "\"},"
+                 "{\"name\":\"" + name + ".sha256\",\"size\":96,\"browser_download_url\":\"file://" + rel + "/" + zipName +
+                 ".sha256\"}]}");
+    }
+    void goodRelease() {
+        release({{"switch/", ""}, {"switch/switchwaker/", ""}, {"switch/switchwaker/initial_dksh_cache.bin", newDksh},
+                 {"switch/switchwaker/initial_pipeline_cache.db", newDb}, {"switch/switchwaker/switchwaker.nro", newNro}});
+    }
+    // The installed version 0.5.0: an NRO and a pipeline cache, no DKSH cache (a file the update adds).
+    void oldInstall() {
+        writeAll(dir + "/switchwaker.nro", "old nro");
+        writeAll(dir + "/initial_pipeline_cache.db", "old db");
+        std::remove((dir + "/initial_dksh_cache.bin").c_str());
+    }
+    bool isOld() {
+        return readAll((dir + "/switchwaker.nro").c_str()) == "old nro" &&
+               readAll((dir + "/initial_pipeline_cache.db").c_str()) == "old db" && !fileExists(dir + "/initial_dksh_cache.bin");
+    }
+    bool isNew() {
+        return readAll((dir + "/switchwaker.nro").c_str()) == newNro &&
+               readAll((dir + "/initial_pipeline_cache.db").c_str()) == newDb &&
+               readAll((dir + "/initial_dksh_cache.bin").c_str()) == newDksh;
+    }
+    bool noLeftovers() {
+        for (const char* n : {"switchwaker.nro", "initial_pipeline_cache.db", "initial_dksh_cache.bin"}) {
+            if (fileExists(dir + "/" + n + ".old") || fileExists(dir + "/" + n + ".new")) {
+                return false;
+            }
+        }
+        return true;
+    }
+    std::string journal() { return readAll((dir + "/native/update/state.txt").c_str()); }
+    // A new process of version `v`.
+    void start(const char* v) {
+        setenv("COS_UPDATE_VERSION", v, 1);
+        pc_update_test_reset();
+        pc_update_boot();
+    }
+    bool installFrom050() {
+        oldInstall();
+        start("0.5.0");
+        pc_update_check(1, "");
+        PcUpdateInfo info = waitIdle();
+        if (info.status != PC_UPDATE_AVAILABLE || pc_update_install() != 1) {
+            return false;
+        }
+        info = waitIdle();
+        return info.status == PC_UPDATE_INSTALLED;
+    }
+};
+
+void testUpdateFlow() {
+    Fixture fx;
+    char root[] = "/tmp/cos_update_flow_XXXXXX";
+    CHECK(mkdtemp(root) != nullptr);
+    fx.root = root;
+    fx.dir = fx.root + "/switchwaker";
+    fx.rel = fx.root + "/release";
+    mkdir(fx.dir.c_str(), 0777);
+    mkdir(fx.rel.c_str(), 0777);
+    setenv("COS_UPDATE_DIR", fx.dir.c_str(), 1);
+    setenv("COS_UPDATE_URL", ("file://" + fx.rel + "/latest.json").c_str(), 1);
+    fx.goodRelease();
+
+    // A development version never checks.
+    fx.oldInstall();
+    fx.start("dev");
+    pc_update_check(1, "");
+    PcUpdateInfo info = waitIdle();
+    CHECK(info.status == PC_UPDATE_DISABLED);
+
+    // Up to date.
+    fx.start("0.5.1-2");
+    pc_update_check(1, "");
+    info = waitIdle();
+    CHECK(info.status == PC_UPDATE_UP_TO_DATE && std::strcmp(info.latest, "v0.5.1") == 0);
+    CHECK(pc_update_install() == 0);
+
+    // Check and install: the new files in place, the old ones kept as .old, the journal "installed".
+    fx.start("0.5.0");
+    pc_update_check(1, "v0.5.0");
+    info = waitIdle();
+    CHECK(info.status == PC_UPDATE_AVAILABLE && std::strcmp(info.latest, "v0.5.1") == 0 &&
+          std::strcmp(info.title, "SwitchWaker v0.5.1") == 0 && info.fromStart && !info.skipped && info.canInstall);
+    pc_update_check(1, "v0.5.1"); // the player chose not to be told about v0.5.1
+    info = waitIdle();
+    CHECK(info.status == PC_UPDATE_AVAILABLE && info.skipped);
+    pc_update_check(0, "v0.5.1"); // the menu's check says it anyway
+    info = waitIdle();
+    CHECK(info.status == PC_UPDATE_AVAILABLE && !info.skipped);
+    CHECK(pc_update_install() == 1);
+    info = waitIdle();
+    CHECK(info.status == PC_UPDATE_INSTALLED);
+    CHECK(info.done == info.total && info.total > 0);
+    CHECK(fx.isNew());
+    CHECK(readAll((fx.dir + "/switchwaker.nro.old").c_str()) == "old nro");
+    CHECK(fileExists(fx.dir + "/initial_pipeline_cache.db.old") && !fileExists(fx.dir + "/initial_dksh_cache.bin.old"));
+    CHECK(fx.journal().find("state=installed\n") == 0 && fx.journal().find("existed=switchwaker.nro") == std::string::npos &&
+          fx.journal().find("existed=") != std::string::npos);
+    CHECK(!fileExists(fx.dir + "/native/update/SwitchWaker-v0.5.1-switch.zip"));
+
+    // The first start of v0.5.1: "booting" until a scene after the logo runs, then clean.
+    fx.start("0.5.1");
+    CHECK(fx.journal().find("state=booting\n") == 0);
+    pc_update_frame(0);
+    pc_update_get_info(&info);
+    CHECK(info.boot == PC_UPDATE_BOOT_NONE && fx.journal().find("state=booting\n") == 0);
+    pc_update_frame(1);
+    pc_update_get_info(&info);
+    CHECK(info.boot == PC_UPDATE_BOOT_FIRST_START && std::strcmp(info.bootTag, "v0.5.1") == 0);
+    CHECK(fx.journal().empty() && fx.noLeftovers() && fx.isNew());
+    fx.start("0.5.1"); // and nothing happens at the next one
+    pc_update_get_info(&info);
+    CHECK(info.boot == PC_UPDATE_BOOT_NONE && fx.isNew());
+
+    // A first start that never gets past the logo: the next start puts 0.5.0 back and remembers.
+    CHECK(fx.installFrom050());
+    fx.start("0.5.1"); // ... and it crashes before the title
+    fx.start("0.5.1");
+    pc_update_get_info(&info);
+    CHECK(info.boot == PC_UPDATE_BOOT_FAILED_BACK && std::strcmp(info.bootTag, "v0.5.1") == 0);
+    CHECK(fx.isOld() && fx.noLeftovers() && fx.journal().empty());
+    fx.start("0.5.0"); // the restored version says so once, and does not offer v0.5.1 at start
+    pc_update_get_info(&info);
+    CHECK(info.boot == PC_UPDATE_BOOT_FAILED_BACK);
+    pc_update_check(1, "");
+    info = waitIdle();
+    CHECK(info.status == PC_UPDATE_AVAILABLE && info.skipped);
+    fx.start("0.5.0");
+    pc_update_get_info(&info);
+    CHECK(info.boot == PC_UPDATE_BOOT_NONE);
+    pc_update_check(0, "");
+    info = waitIdle();
+    CHECK(info.status == PC_UPDATE_AVAILABLE && !info.skipped);
+    // a successful install forgets the failure
+    CHECK(pc_update_install() == 1);
+    info = waitIdle();
+    CHECK(info.status == PC_UPDATE_INSTALLED && !fileExists(fx.dir + "/native/update/failed.txt"));
+    fx.start("0.5.1");
+    pc_update_frame(1);
+
+    // A swap interrupted after the NRO moved: the next start (the old NRO's) puts it back.
+    fx.oldInstall();
+    writeAll(fx.dir + "/switchwaker.nro.old", "old nro");
+    writeAll(fx.dir + "/switchwaker.nro", "new nro, half installed");
+    writeAll(fx.dir + "/initial_pipeline_cache.db.new", "new db");
+    writeAll(fx.dir + "/native/update/state.txt",
+             "state=installing\ntag=v0.5.1\nfrom=0.5.0\nnames=switchwaker.nro,initial_pipeline_cache.db,initial_dksh_cache.bin\n"
+             "existed=switchwaker.nro,initial_pipeline_cache.db\n");
+    fx.start("0.5.0");
+    pc_update_get_info(&info);
+    CHECK(info.boot == PC_UPDATE_BOOT_ROLLED_BACK && fx.isOld() && fx.noLeftovers() && fx.journal().empty());
+
+    // Leftovers without a journal (a kill while unpacking) go at the next start.
+    writeAll(fx.dir + "/switchwaker.nro.new", "x");
+    writeAll(fx.dir + "/native/update/SwitchWaker-v0.5.1-switch.zip", "partial");
+    writeAll(fx.dir + "/notes.txt.old", "the player's");
+    fx.start("0.5.0");
+    CHECK(fx.noLeftovers() && !fileExists(fx.dir + "/native/update/SwitchWaker-v0.5.1-switch.zip") &&
+          fileExists(fx.dir + "/notes.txt.old"));
+
+    // A journal of a version this build is not (files copied by hand): kept files, journal gone.
+    writeAll(fx.dir + "/switchwaker.nro.old", "older");
+    writeAll(fx.dir + "/native/update/state.txt", "state=installed\ntag=v0.5.1\nfrom=0.5.0\nnames=switchwaker.nro\nexisted=switchwaker.nro\n");
+    fx.start("0.6.0");
+    CHECK(fx.journal().empty() && fx.noLeftovers() && readAll((fx.dir + "/switchwaker.nro").c_str()) == "old nro");
+
+    // A bad checksum, a file outside switch/switchwaker/, no NRO, no zip for this region: nothing changes.
+    struct Bad {
+        std::vector<std::pair<std::string, std::string>> files;
+        bool badSha;
+        bool usaZip;
+        PcUpdateError error;
+    };
+    const Bad bads[] = {
+        {{{"switch/switchwaker/switchwaker.nro", "n"}}, true, true, PC_UPDATE_ERR_CHECKSUM},
+        {{{"switch/switchwaker/switchwaker.nro", "n"}, {"switch/switchwaker/native/user/settings.ini", "x"}}, false, true,
+         PC_UPDATE_ERR_BAD_ZIP},
+        {{{"switch/switchwaker/initial_pipeline_cache.db", "d"}}, false, true, PC_UPDATE_ERR_BAD_ZIP},
+        {{{"switch/switchwaker/switchwaker.nro", "n"}}, false, false, PC_UPDATE_ERR_NO_ASSET},
+    };
+    for (const Bad& b : bads) {
+        fx.release(b.files, b.badSha, b.usaZip);
+        fx.oldInstall();
+        fx.start("0.5.0");
+        pc_update_check(0, "");
+        info = waitIdle();
+        CHECK(info.status == PC_UPDATE_AVAILABLE && pc_update_install() == 1);
+        info = waitIdle();
+        CHECK(info.status == PC_UPDATE_INSTALL_FAILED && info.error == b.error);
+        CHECK(fx.isOld() && fx.noLeftovers() && fx.journal().empty());
+    }
+
+    // A failed check: nothing to fetch; an answer that is not a release.
+    setenv("COS_UPDATE_URL", ("file://" + fx.rel + "/missing.json").c_str(), 1);
+    fx.start("0.5.0");
+    pc_update_check(1, "");
+    info = waitIdle();
+    CHECK(info.status == PC_UPDATE_CHECK_FAILED && info.error == PC_UPDATE_ERR_SERVER);
+    writeAll(fx.rel + "/limit.json", "{\"message\":\"API rate limit exceeded for 1.2.3.4.\"}");
+    setenv("COS_UPDATE_URL", ("file://" + fx.rel + "/limit.json").c_str(), 1);
+    pc_update_check(1, "");
+    info = waitIdle();
+    CHECK(info.status == PC_UPDATE_CHECK_FAILED && info.error == PC_UPDATE_ERR_SERVER);
+
+    // Without an install directory the copy cannot update itself.
+    unsetenv("COS_UPDATE_DIR");
+    fx.goodRelease();
+    setenv("COS_UPDATE_URL", ("file://" + fx.rel + "/latest.json").c_str(), 1);
+    fx.start("0.5.0");
+    pc_update_check(0, "");
+    info = waitIdle();
+    CHECK(info.status == PC_UPDATE_AVAILABLE && !info.canInstall && pc_update_install() == 0);
+
+    std::string cmd = "rm -rf '" + fx.root + "'";
+    CHECK(std::system(cmd.c_str()) == 0);
+}
+
+// --live: the real thing against GitHub (network; not part of the default run): check as version
+// 0.4.2, download the latest USA zip, install it into a temporary directory, print what landed.
+int liveTest() {
+    char root[] = "/tmp/cos_update_live_XXXXXX";
+    if (mkdtemp(root) == nullptr) {
+        return 1;
+    }
+    const std::string dir = std::string(root) + "/switchwaker";
+    mkdir(dir.c_str(), 0777);
+    writeAll(dir + "/switchwaker.nro", "old nro");
+    setenv("COS_UPDATE_DIR", dir.c_str(), 1);
+    unsetenv("COS_UPDATE_URL");
+    setenv("COS_UPDATE_VERSION", "0.4.2", 1);
+    pc_update_boot();
+    pc_update_check(1, "");
+    PcUpdateInfo info = waitIdle(90);
+    std::printf("check: status %d error %d latest %s \"%s\" %s\n", (int)info.status, (int)info.error, info.latest,
+                info.title, info.detail);
+    if (info.status != PC_UPDATE_AVAILABLE || pc_update_install() != 1) {
+        return 1;
+    }
+    for (;;) {
+        pc_update_get_info(&info);
+        if (info.status != PC_UPDATE_DOWNLOADING && info.status != PC_UPDATE_INSTALLING) {
+            break;
+        }
+        std::printf("  %d: %llu / %llu\n", (int)info.status, (unsigned long long)info.done, (unsigned long long)info.total);
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    }
+    info = waitIdle(90);
+    std::printf("install: status %d error %d %s\n", (int)info.status, (int)info.error, info.detail);
+    std::string cmd = "ls -la '" + dir + "' '" + dir + "/native/update'; shasum -a 256 '" + dir + "'/*.nro";
+    std::system(cmd.c_str());
+    std::printf("left in %s\n", root);
+    return info.status == PC_UPDATE_INSTALLED ? 0 : 1;
+}
+
 } // namespace
 
-int main() {
+int main(int argc, char** argv) {
+    if (argc > 1 && std::strcmp(argv[1], "--live") == 0) {
+        return liveTest();
+    }
     testUpdateCore();
+    testUpdateFlow();
     if (g_failures != 0) {
         std::printf("FAIL: %d checks\n", g_failures);
         return 1;
