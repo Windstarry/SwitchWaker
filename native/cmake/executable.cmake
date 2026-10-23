@@ -33,6 +33,20 @@ if (COS_RUNTIME_ASSETS)
     target_compile_definitions(cos_pc PRIVATE COS_RUNTIME_ASSETS=1)
 endif ()
 target_include_directories(cos_pc PRIVATE "${COS_NATIVE_ROOT}/src/pc")
+# pc_update_core.cpp (issues #27, #28) reads the release zip with zlib's inflate; Aurora provides
+# ZLIB::ZLIB on every host (the system's or its own), the Switch build the portlib's. Link only: its
+# include directory can be the SDK's usr/include (the Mac), which as an -isystem ahead of libc++'s
+# headers breaks <cmath>; the header's directory goes last instead (-idirafter).
+if (TARGET ZLIB::ZLIB)
+    target_link_libraries(cos_pc PRIVATE $<LINK_ONLY:ZLIB::ZLIB>)
+    get_target_property(_cos_zlib_inc ZLIB::ZLIB INTERFACE_INCLUDE_DIRECTORIES)
+    if (_cos_zlib_inc)
+        foreach (_d IN LISTS _cos_zlib_inc)
+            set_property(SOURCE "${COS_NATIVE_ROOT}/src/pc/features/pc_update_core.cpp"
+                    "${COS_NATIVE_ROOT}/check/update_tests.cpp" APPEND PROPERTY COMPILE_OPTIONS "-idirafter${_d}")
+        endforeach ()
+    endif ()
+endif ()
 # pc_main.cpp (step 6.1) sets cos_sdk's thread hooks (cos_sdk/hooks.h); switchwaker itself links cos_sdk.
 target_include_directories(cos_pc PRIVATE "${COS_NATIVE_ROOT}/sdk/include")
 # pc_frame.cpp (step 6.2) reads Aurora's events (<aurora/event.h> includes SDL3's headers). Headers
@@ -91,6 +105,17 @@ if (TARGET cos_sdk)
             "${COS_ROOT}/src/SSystem/SComponent/c_sxyz.cpp")
     target_link_libraries(cos_pc_tests PRIVATE cos_game_headers cos_pc cos_sdk)
     set_target_properties(cos_pc_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+endif ()
+
+# cos_update_tests (issues #27, #28): host tests of pc_update_core.cpp, which needs no game code: a
+# plain host program.  ninja cos_update_tests && build/native-mac/cos_update_tests
+if (TARGET ZLIB::ZLIB AND NOT CMAKE_CROSSCOMPILING)
+    add_executable(cos_update_tests "${COS_NATIVE_ROOT}/check/update_tests.cpp"
+            "${COS_NATIVE_ROOT}/src/pc/features/pc_update_core.cpp")
+    target_include_directories(cos_update_tests PRIVATE "${COS_NATIVE_ROOT}/src/pc")
+    target_compile_features(cos_update_tests PRIVATE cxx_std_20)
+    target_link_libraries(cos_update_tests PRIVATE $<LINK_ONLY:ZLIB::ZLIB>)
+    set_target_properties(cos_update_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
 endif ()
 
 if (NOT TARGET cos_sdk)
