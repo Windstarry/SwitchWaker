@@ -17,6 +17,7 @@
 #ifndef PC_UPDATE_H
 #define PC_UPDATE_H
 
+#include <stddef.h>
 #include <stdint.h>
 
 typedef enum PcUpdateStatus {
@@ -89,6 +90,9 @@ void pc_update_check(int atStart, const char* skipTag);
  * (no newer release found, this copy cannot update itself, already running). */
 int pc_update_install(void);
 void pc_update_get_info(PcUpdateInfo* out);
+/* The release notes of the newest release found (notesFromMarkdown in pc_update_core.h: lines, "# " a
+ * heading, "- " an item after two spaces per level) into out, cut to size; the full length. 0: none. */
+size_t pc_update_get_notes(char* out, size_t size);
 /* Restarts into the installed version: 1 never returns (the Switch's forwarder restarts the
  * program); 0 when the player has to start the game again (hbmenu, the desktop). */
 int pc_update_restart(void);

@@ -1,5 +1,5 @@
 # COS_SMOKE=options-menu without --stage (issues #27/#28): the popup for the fixture release v9.9.9
-# (native/check/update), down twice to "No avisar de esta versión", A: the choice is saved
+# (native/check/update), down three times to "No avisar de esta versión", A: the choice is saved
 # (COS_UPDATE_SKIP) and nothing is installed or opened.
 #update-release ../update
 #title
@@ -14,5 +14,7 @@
 523 - 0 0
 526 DOWN 0 0
 529 - 0 0
-532 A 0 0
+532 DOWN 0 0
 535 - 0 0
+538 A 0 0
+541 - 0 0

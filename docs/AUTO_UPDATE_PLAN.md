@@ -39,6 +39,10 @@ drafts and pre-releases are never offered.
   setting without a menu row). During PLAY it waits for the next non-PLAY scene; the Sistema tab
   shows it any time.
 - The Sistema tab's **Actualización** row checks again on A (it ignores `COS_UPDATE_SKIP`).
+- Release notes: the release's `body` (GitHub Markdown) as plain Latin-1 lines (`notesFromMarkdown`:
+  headings, items, links reduced to their text, tables on one line; the "Install..." section left out),
+  on a scrolling page of the Sistema tab (**Notas de la versión**, or the popup's **Ver notas de la
+  versión**); A there installs. Only the latest release's notes, not those of releases skipped between.
 
 ## Install (#28)
 

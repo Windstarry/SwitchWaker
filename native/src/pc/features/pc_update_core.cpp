@@ -456,6 +456,9 @@ bool parseRelease(const std::string& json, Release* out, std::string* error) {
         if (key == "html_url") {
             return j.string(&r.htmlUrl);
         }
+        if (key == "body") {
+            return j.stringOrNull(&r.body);
+        }
         if (key == "assets") {
             return j.array([&] {
                 Asset a;
@@ -511,6 +514,213 @@ const Asset* findAsset(const Release& release, const std::string& name) {
         }
     }
     return nullptr;
+}
+
+// ---- release notes ---------------------------------------------------------------------------------
+
+namespace {
+
+// UTF-8 to what the menu's Latin-1 font can draw.
+std::string latin1Text(const std::string& s) {
+    std::string out;
+    for (size_t i = 0; i < s.size();) {
+        const unsigned char c = (unsigned char)s[i];
+        uint32_t cp = c;
+        size_t n = 1;
+        if (c >= 0xF0 && i + 3 < s.size()) {
+            cp = (c & 0x07u) << 18 | ((unsigned char)s[i + 1] & 0x3Fu) << 12 | ((unsigned char)s[i + 2] & 0x3Fu) << 6 |
+                 ((unsigned char)s[i + 3] & 0x3Fu);
+            n = 4;
+        } else if (c >= 0xE0 && i + 2 < s.size()) {
+            cp = (c & 0x0Fu) << 12 | ((unsigned char)s[i + 1] & 0x3Fu) << 6 | ((unsigned char)s[i + 2] & 0x3Fu);
+            n = 3;
+        } else if (c >= 0xC0 && i + 1 < s.size()) {
+            cp = (c & 0x1Fu) << 6 | ((unsigned char)s[i + 1] & 0x3Fu);
+            n = 2;
+        } else if (c >= 0x80) {
+            i++; // a stray continuation byte
+            continue;
+        }
+        i += n;
+        switch (cp) {
+        case 0x2018: case 0x2019: case 0x201A: case 0x2032: out += '\''; continue;
+        case 0x201C: case 0x201D: case 0x201E: case 0x2033: out += '"'; continue;
+        case 0x2010: case 0x2011: case 0x2012: case 0x2013: case 0x2014: case 0x2015: case 0x2212: out += '-'; continue;
+        case 0x2026: out += "..."; continue;
+        case 0x2022: case 0x2023: case 0x25CF: out += '-'; continue;
+        case 0x2192: case 0x21D2: case 0x27F6: out += "->"; continue;
+        case 0x2190: out += "<-"; continue;
+        case 0x00A0: case 0x2002: case 0x2003: case 0x2009: case 0x202F: out += ' '; continue;
+        case 0x2264: out += "<="; continue;
+        case 0x2265: out += ">="; continue;
+        case 0x2248: out += "~"; continue;
+        default: break;
+        }
+        if (cp < 0x80) {
+            out += (char)cp;
+        } else if (cp <= 0xFF) {
+            out += (char)(0xC0 | (cp >> 6));
+            out += (char)(0x80 | (cp & 0x3F));
+        } // emoji and the rest: the font has no glyph
+    }
+    return out;
+}
+
+// One line's inline Markdown: emphasis and code marks go, links and images keep their text.
+std::string inlineText(const std::string& s) {
+    std::string out;
+    for (size_t i = 0; i < s.size();) {
+        const char c = s[i];
+        if (c == '\\' && i + 1 < s.size() && strchr("\\`*_[]()#+-.!|<>", s[i + 1]) != nullptr) {
+            out += s[i + 1];
+            i += 2;
+            continue;
+        }
+        if (c == '`') {
+            i++;
+            continue;
+        }
+        if ((c == '*' || c == '_') && i + 1 < s.size() && s[i + 1] == c) {
+            i += 2;
+            continue;
+        }
+        if (c == '*' && (i + 1 < s.size() && s[i + 1] != ' ')) {
+            i++; // *emphasis*
+            continue;
+        }
+        if ((c == '[' || (c == '!' && i + 1 < s.size() && s[i + 1] == '['))) {
+            const size_t open = c == '!' ? i + 1 : i;
+            const size_t close = s.find(']', open);
+            if (close != std::string::npos && close + 1 < s.size() && s[close + 1] == '(') {
+                const size_t end = s.find(')', close + 2);
+                if (end != std::string::npos) {
+                    out += inlineText(s.substr(open + 1, close - open - 1));
+                    i = end + 1;
+                    continue;
+                }
+            }
+        }
+        if (c == '<' && (s.compare(i + 1, 7, "http://") == 0 || s.compare(i + 1, 8, "https://") == 0)) {
+            const size_t end = s.find('>', i);
+            if (end != std::string::npos) {
+                out += s.substr(i + 1, end - i - 1);
+                i = end + 1;
+                continue;
+            }
+        }
+        out += c;
+        i++;
+    }
+    return out;
+}
+
+std::string trimmed(const std::string& s) {
+    size_t a = 0, b = s.size();
+    while (a < b && (s[a] == ' ' || s[a] == '\t')) {
+        a++;
+    }
+    while (b > a && (s[b - 1] == ' ' || s[b - 1] == '\t' || s[b - 1] == '\r')) {
+        b--;
+    }
+    return s.substr(a, b - a);
+}
+
+} // namespace
+
+std::string notesFromMarkdown(const std::string& markdown) {
+    std::vector<std::string> lines;
+    int skipLevel = 0; // inside an "Install..." section of this heading level
+    size_t start = 0;
+    while (start <= markdown.size()) {
+        size_t nl = markdown.find('\n', start);
+        if (nl == std::string::npos) {
+            nl = markdown.size();
+        }
+        std::string raw = markdown.substr(start, nl - start);
+        start = nl + 1;
+        if (!raw.empty() && raw.back() == '\r') {
+            raw.pop_back();
+        }
+        const std::string t = trimmed(raw);
+        if (t.rfind("<!--", 0) == 0) {
+            continue;
+        }
+        int level = 0;
+        while (level < (int)t.size() && t[level] == '#') {
+            level++;
+        }
+        const bool heading = level > 0 && level <= 6 && level < (int)t.size() && t[level] == ' ';
+        if (heading) {
+            const std::string text = trimmed(t.substr(level + 1));
+            if (skipLevel != 0 && level > skipLevel) {
+                continue;
+            }
+            skipLevel = 0;
+            std::string lower;
+            for (char ch : text) {
+                lower += (char)tolower((unsigned char)ch);
+            }
+            if (lower.rfind("install", 0) == 0) {
+                skipLevel = level;
+                continue;
+            }
+            if (!lines.empty() && lines.back().empty()) {
+                lines.pop_back(); // the menu spaces headings itself
+            }
+            lines.push_back("# " + latin1Text(inlineText(text)));
+            continue;
+        }
+        if (skipLevel != 0) {
+            continue;
+        }
+        if (t.empty()) {
+            if (!lines.empty() && !lines.back().empty() && lines.back().rfind("# ", 0) != 0) {
+                lines.push_back("");
+            }
+            continue;
+        }
+        if (t[0] == '|') {
+            bool separator = true;
+            for (char ch : t) {
+                separator = separator && (ch == '|' || ch == '-' || ch == ':' || ch == ' ');
+            }
+            if (separator) {
+                continue;
+            }
+            std::string row;
+            size_t p = 1;
+            while (p < t.size()) {
+                size_t bar = t.find('|', p);
+                if (bar == std::string::npos) {
+                    bar = t.size();
+                }
+                const std::string cell = trimmed(t.substr(p, bar - p));
+                if (!cell.empty()) {
+                    row += (row.empty() ? "" : " \xC2\xB7 ") + cell;
+                }
+                p = bar + 1;
+            }
+            lines.push_back(latin1Text(inlineText(row)));
+            continue;
+        }
+        size_t indent = 0;
+        while (indent < raw.size() && (raw[indent] == ' ' || raw[indent] == '\t')) {
+            indent += raw[indent] == '\t' ? 4 : 1;
+        }
+        if (t.size() > 1 && (t[0] == '-' || t[0] == '*' || t[0] == '+') && t[1] == ' ') {
+            lines.push_back(std::string((indent / 2) * 2, ' ') + "- " + latin1Text(inlineText(trimmed(t.substr(2)))));
+            continue;
+        }
+        lines.push_back(std::string((indent / 2) * 2, ' ') + latin1Text(inlineText(t)));
+    }
+    while (!lines.empty() && lines.back().empty()) {
+        lines.pop_back();
+    }
+    std::string out;
+    for (const std::string& l : lines) {
+        out += l + "\n";
+    }
+    return out;
 }
 
 std::string zipNameFor(const std::string& tag, const char* gameId) {

@@ -546,10 +546,12 @@ open the PLAY scene is paused (hit-stop pause timer) and the game gets no pad in
   next start).
   Gráficos, Controles, Rendimiento, Calidad de vida and Sistema keep the options meant for players.
 - Sistema (`native/include/pc/pc_update.h`, issues #27/#28, `docs/AUTO_UPDATE_PLAN.md`): "Actualización"
-  (A checks GitHub's latest release, installs a newer one, then restarts) and "Buscar actualizaciones al
+  (A checks GitHub's latest release, installs a newer one, then restarts), "Notas de la versión" (the
+  release's notes, its GitHub Markdown as plain lines: a scrolling page, A installs) and "Buscar actualizaciones al
   arrancar" (`COS_UPDATE_CHECK`, on): at start a newer release brings up a popup once the logo is over,
-  outside the PLAY scene (update now / later / not this version, `COS_UPDATE_SKIP`). Regression targets:
-  `options-menu` with `native/check/input/menu-update.txt` and `menu-update-skip.txt`.
+  outside the PLAY scene (update now / release notes / later / not this version, `COS_UPDATE_SKIP`).
+  Regression targets: `options-menu` with `native/check/input/menu-update.txt`, `menu-update-skip.txt` and
+  `menu-update-notes.txt`.
 - Values are saved to `user/settings.ini` next to the executable (Switch:
   `/switch/switchwaker/native/user/settings.ini`; `COS_SETTINGS=<path>` names another file,
   and `run.sh` gives every run its own `<run dir>/settings.ini`). Lines `NAME=value`, or

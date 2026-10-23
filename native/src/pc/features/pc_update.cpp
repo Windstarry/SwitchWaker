@@ -415,7 +415,7 @@ struct State {
     // published (under mu)
     PcUpdateStatus status = PC_UPDATE_IDLE;
     PcUpdateError error = PC_UPDATE_OK;
-    std::string current, latest, title, detail;
+    std::string current, latest, title, detail, notes;
     uint64_t total = 0;
     bool fromStart = false, skipped = false;
     Release release; // the newer release the last check found
@@ -451,6 +451,7 @@ void runCheck(bool atStart, const std::string& skipTag) {
         s.skipped = false;
         s.latest.clear();
         s.title.clear();
+        s.notes.clear();
         s.release = Release();
     }
     Version cur;
@@ -506,6 +507,7 @@ void runCheck(bool atStart, const std::string& skipTag) {
     std::lock_guard<std::mutex> lk(s.mu);
     s.latest = rel.tag;
     s.title = rel.name;
+    s.notes = notesFromMarkdown(rel.body);
     s.skipped = skipped;
     s.status = newer ? PC_UPDATE_AVAILABLE : PC_UPDATE_UP_TO_DATE;
     s.error = PC_UPDATE_OK;
@@ -880,6 +882,16 @@ void pc_update_get_info(PcUpdateInfo* out) {
     copyOut(out->bootTag, sizeof(out->bootTag), s.bootTag);
 }
 
+size_t pc_update_get_notes(char* out, size_t size) {
+    HostScope hostAlloc;
+    State& s = st();
+    std::lock_guard<std::mutex> lk(s.mu);
+    if (out != nullptr && size > 0) {
+        snprintf(out, size, "%s", s.notes.c_str());
+    }
+    return s.notes.size();
+}
+
 int pc_update_can_restart(void) {
 #if defined(__SWITCH__)
     return cos_switch_from_forwarder();
@@ -917,6 +929,7 @@ void pc_update_test_reset(void) {
     s.latest.clear();
     s.title.clear();
     s.detail.clear();
+    s.notes.clear();
     s.release = Release();
     s.fromStart = s.skipped = false;
     s.boot = PC_UPDATE_BOOT_NONE;

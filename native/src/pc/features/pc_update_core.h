@@ -56,12 +56,19 @@ struct Release {
     std::string tag;     // tag_name, e.g. "v0.5.1"
     std::string name;    // the release title
     std::string htmlUrl; // the release page
+    std::string body;    // the release notes (GitHub Markdown)
     std::vector<Asset> assets;
 };
 
 // Reads the fields above from GitHub's GET /repos/{owner}/{repo}/releases/latest answer.
 bool parseRelease(const std::string& json, Release* out, std::string* error);
 const Asset* findAsset(const Release& release, const std::string& name);
+// The release notes as plain lines for the menu, whose font has only Latin-1: "# " starts a heading,
+// "- " (after two spaces per level) an item; **bold**, `code` and links lose their marks ([text](url) ->
+// text), a table row becomes its cells joined by " · ", typographic quotes, dashes, ellipses and arrows
+// become Latin-1 or ASCII and other characters past U+00FF go. The "Install..." section is left out
+// (the game installs the update itself); runs of blank lines become one, and none touches a heading.
+std::string notesFromMarkdown(const std::string& markdown);
 // The release zip of a region: "SwitchWaker-<tag>-switch.zip" (GZLE01) or "-switch-eur.zip" (GZLP01);
 // "" for another game ID.
 std::string zipNameFor(const std::string& tag, const char* gameId);

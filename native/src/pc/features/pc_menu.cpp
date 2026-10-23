@@ -754,7 +754,8 @@ enum class RowKind {
     QolOriginal,
     Remap,
     RemapRestore,
-    Update
+    Update,
+    Notes
 };
 
 struct Row {
@@ -811,6 +812,11 @@ struct Menu {
     bool popup = false;
     int popupRow = 0;
     bool popupDone = false;
+    // The release notes page (Sistema > "Notas de la versión", or the popup): its scroll step this frame
+    // in lines (a page is kNotesPage lines) and a jump to the top.
+    bool notesPage = false;
+    int notesScroll = 0;
+    bool notesTop = false;
     bool playNoticeDone = false;
     PcUpdateBootResult bootShown = PC_UPDATE_BOOT_NONE;
     std::string notice;
@@ -844,6 +850,7 @@ std::vector<Row> rowsOf(int tab) {
     }
     if (tab == PC_SETTING_TAB_SYSTEM) {
         rows.push_back({RowKind::Update});
+        rows.push_back({RowKind::Notes});
     }
     if (tab == PC_SETTING_TAB_DEBUG) {
         rows.push_back({RowKind::Warp});
@@ -915,6 +922,7 @@ void setOpen(bool open) {
     }
     m.open = open;
     m.warpPage = false;
+    m.notesPage = false;
     m.waitRelease = true;
     m.captureAction = -1;
     PADBlockInput(open);
@@ -1113,6 +1121,7 @@ void captureFrame() {
 // ---- updates (pc_update.h) -----------------------------------------------------------------------
 
 uint32_t pressed(uint32_t keys);
+void openNotes();
 
 void* isAfterLogoScene(void* proc, void*) {
     switch (fpcM_GetName(proc)) {
@@ -1179,6 +1188,16 @@ void requestRestart() {
         toast(T("Cierra el juego y vuelve a abrirlo para usar la versión nueva",
                 "Close the game and open it again to run the new version"));
     }
+}
+
+// The Sistema tab's "Notas de la versión" row: the notes page, once a check found a newer release.
+void activateNotes() {
+    if (pc_update_get_notes(nullptr, 0) == 0) {
+        toast(T("No hay notas: busca antes una versión nueva (Actualización)",
+                "No notes: check for a new version first (Update)"));
+        return;
+    }
+    openNotes();
 }
 
 // The Sistema tab's "Actualización" row: A checks, installs or restarts, by the state.
@@ -1292,6 +1311,22 @@ std::string updateHelp() {
     }
 }
 
+std::string updateNotes() {
+    const size_t n = pc_update_get_notes(nullptr, 0);
+    std::string text(n + 1, '\0');
+    pc_update_get_notes(text.data(), text.size());
+    text.resize(n);
+    return text;
+}
+
+constexpr int kNotesPage = 10; // lines a page step scrolls
+
+void openNotes() {
+    m.notesPage = true;
+    m.notesTop = true;
+    m.notesScroll = 0;
+}
+
 void openUpdateRow() {
     m.tab = PC_SETTING_TAB_SYSTEM;
     m.row[PC_SETTING_TAB_SYSTEM] = 0; // "Actualización"
@@ -1337,7 +1372,7 @@ void updateFrame() {
     if (announce && !m.popupDone && !m.open && !m.popup && !inPlay() && afterLogo()) {
         m.popup = true;
         m.popupDone = true;
-        m.popupRow = info.canInstall ? 0 : 1;
+        m.popupRow = info.canInstall ? 0 : pc_update_get_notes(nullptr, 0) > 0 ? 1 : 2;
         m.waitRelease = true;
         PADBlockInput(true);
         writef(STDERR_FILENO, "[cos] menu: update popup for %s\n", info.latest);
@@ -1357,7 +1392,14 @@ void closePopup() {
     PADBlockInput(m.open);
 }
 
-// The popup's three choices: update now (opens the Sistema tab and starts), later, not this version.
+// The popup's choices: update now (opens the Sistema tab and starts), the release notes (the Sistema tab's
+// notes page), later, not this version. The first two only when they can be had.
+constexpr int kPopupChoices = 4;
+
+bool popupUsable(int row, const PcUpdateInfo& info) {
+    return row == 0 ? info.canInstall != 0 : row == 1 ? pc_update_get_notes(nullptr, 0) > 0 : true;
+}
+
 void popupInput(uint32_t keys) {
     const uint32_t p = pressed(keys);
     if (m.waitRelease) {
@@ -1368,12 +1410,15 @@ void popupInput(uint32_t keys) {
     }
     PcUpdateInfo info;
     pc_update_get_info(&info);
-    const int first = info.canInstall ? 0 : 1;
-    if (p & kUp) {
-        m.popupRow = std::max(first, m.popupRow - 1);
-    }
-    if (p & kDown) {
-        m.popupRow = std::min(2, m.popupRow + 1);
+    if (p & (kUp | kDown)) {
+        // the next usable choice that way (popupUsable), staying put at either end
+        const int step = (p & kUp) ? -1 : 1;
+        for (int r = m.popupRow + step; r >= 0 && r < kPopupChoices; r += step) {
+            if (popupUsable(r, info)) {
+                m.popupRow = r;
+                break;
+            }
+        }
     }
     if (p & (kBack | kCombo)) {
         writef(STDERR_FILENO, "[cos] menu: update popup: later\n");
@@ -1383,12 +1428,20 @@ void popupInput(uint32_t keys) {
     if (!(p & kConfirm)) {
         return;
     }
+    if (!popupUsable(m.popupRow, info)) {
+        return;
+    }
     if (m.popupRow == 0) {
         writef(STDERR_FILENO, "[cos] menu: update popup: update now\n");
         closePopup();
         openUpdateRow();
         pc_update_install();
-    } else if (m.popupRow == 2) {
+    } else if (m.popupRow == 1) {
+        writef(STDERR_FILENO, "[cos] menu: update popup: release notes\n");
+        closePopup();
+        openUpdateRow();
+        openNotes();
+    } else if (m.popupRow == 3) {
         writef(STDERR_FILENO, "[cos] menu: update popup: not about %s\n", info.latest);
         pc_settings_set("COS_UPDATE_SKIP", info.latest);
         closePopup();
@@ -1453,6 +1506,11 @@ void activate(const Row& r, int dir) {
             activateUpdate();
         }
         break;
+    case RowKind::Notes:
+        if (dir == 0) {
+            activateNotes();
+        }
+        break;
     }
 }
 
@@ -1493,6 +1551,24 @@ void handleInput(uint32_t keys) {
     }
     if (p & kCombo) {
         setOpen(false);
+        return;
+    }
+    if (m.notesPage) {
+        if (p & kBack) {
+            m.notesPage = false;
+            m.scrollToRow = true;
+            return;
+        }
+        m.notesScroll += (p & kUp) ? -1 : (p & kDown) ? 1 : (p & kLeft) ? -kNotesPage : (p & kRight) ? kNotesPage : 0;
+        if (p & kConfirm) {
+            PcUpdateInfo info;
+            pc_update_get_info(&info);
+            if ((info.status == PC_UPDATE_AVAILABLE || info.status == PC_UPDATE_INSTALL_FAILED) && info.canInstall) {
+                m.notesPage = false; // back on the Actualización row, which shows the download
+                m.row[PC_SETTING_TAB_SYSTEM] = 0;
+                activateUpdate();
+            }
+        }
         return;
     }
     if (m.warpPage) {
@@ -1564,6 +1640,7 @@ std::string rowLabel(const Row& r) {
     case RowKind::RemapRestore: return T("Restaurar controles por defecto", "Restore default controls");
     case RowKind::Remap: return settingLabel(r.desc);
     case RowKind::Update: return T("Actualización", "Update");
+    case RowKind::Notes: return T("Notas de la versión", "Release notes");
     case RowKind::Setting: break;
     }
     std::string s = settingLabel(r.desc);
@@ -1585,6 +1662,16 @@ std::string rowValue(const Row& r) {
     case RowKind::QolOriginal: return T("A: aplicar", "A: apply");
     case RowKind::RemapRestore: return T("A: restaurar", "A: restore");
     case RowKind::Update: return updateValue();
+    case RowKind::Notes: {
+        PcUpdateInfo info;
+        pc_update_get_info(&info);
+        if (pc_update_get_notes(nullptr, 0) == 0) {
+            return "-";
+        }
+        char text[64];
+        snprintf(text, sizeof(text), T("A: ver (%s)", "A: read (%s)"), info.latest);
+        return text;
+    }
     case RowKind::Remap: {
         if (r.action == m.captureAction) {
             const uint64_t elapsed = std::min<uint64_t>(nowMs() - m.captureStartMs, kCaptureMs);
@@ -1663,6 +1750,10 @@ std::string rowHelp(const Row& r) {
                  "settings.ini does the same.");
     case RowKind::Update:
         return updateHelp();
+    case RowKind::Notes:
+        return T("Lo que trae la versión nueva, de su página en GitHub (en inglés). Aparece cuando la búsqueda "
+                 "encuentra una.",
+                 "What the new version brings, from its GitHub page. It shows up once a check finds one.");
     case RowKind::Remap:
         if (r.action == m.captureAction) {
             return T("Pulsa el botón que hará esta acción; si ya hacía otra, se intercambian. Menos cancela.",
@@ -1732,7 +1823,7 @@ void drawMenu() {
         const bool sel = t == m.tab;
         const char* name = T(kTabNames[t], kTabNamesEn[t]);
         ImGui::PushStyleColor(ImGuiCol_Button, sel ? ImVec4(0.20f, 0.42f, 0.70f, 1.0f) : ImVec4(0.16f, 0.18f, 0.22f, 1.0f));
-        if (ImGui::Button(name, ImVec2(ImGui::CalcTextSize(name).x + tabSpare, 0)) && !m.warpPage &&
+        if (ImGui::Button(name, ImVec2(ImGui::CalcTextSize(name).x + tabSpare, 0)) && !m.warpPage && !m.notesPage &&
             m.captureAction < 0) {
             m.tab = t;
         }
@@ -1745,7 +1836,55 @@ void drawMenu() {
     if (ImGui::BeginChild("##rows", ImVec2(0, -footer), ImGuiChildFlags_None, ImGuiWindowFlags_NoNav)) {
         // Child windows scale their text by their parent's font scale already.
         float valueX = ImGui::GetContentRegionAvail().x * 0.45f;
-        if (m.warpPage) {
+        if (m.notesPage) {
+            PcUpdateInfo info;
+            pc_update_get_info(&info);
+            ImGui::TextColored(kAccent, T("Notas de %s   (B: volver)", "Notes of %s   (B: back)"),
+                               info.title[0] != '\0' ? info.title : info.latest);
+            ImGui::Separator();
+            const std::string notes = updateNotes();
+            ImGui::PushTextWrapPos(0.0f);
+            size_t at = 0;
+            while (at < notes.size()) {
+                size_t nl = notes.find('\n', at);
+                if (nl == std::string::npos) {
+                    nl = notes.size();
+                }
+                const std::string line = notes.substr(at, nl - at);
+                at = nl + 1;
+                if (line.rfind("# ", 0) == 0) {
+                    ImGui::Spacing();
+                    ImGui::TextColored(kAccent, "%s", line.c_str() + 2);
+                    continue;
+                }
+                size_t indent = 0;
+                while (indent < line.size() && line[indent] == ' ') {
+                    indent++;
+                }
+                const float x = ImGui::GetFontSize() * 0.6f * (float)indent;
+                if (x > 0.0f) {
+                    ImGui::Indent(x);
+                }
+                ImGui::TextUnformatted(line.empty() ? " " : line.c_str() + indent);
+                if (x > 0.0f) {
+                    ImGui::Unindent(x);
+                }
+            }
+            ImGui::PopTextWrapPos();
+            if (m.notesTop) {
+                ImGui::SetScrollY(0.0f);
+                m.notesTop = false;
+            } else if (m.notesScroll != 0) {
+                ImGui::SetScrollY(std::max(0.0f, ImGui::GetScrollY() + m.notesScroll * ImGui::GetTextLineHeightWithSpacing()));
+            }
+            m.notesScroll = 0;
+            const bool canInstall =
+                (info.status == PC_UPDATE_AVAILABLE || info.status == PC_UPDATE_INSTALL_FAILED) && info.canInstall;
+            help = canInstall ? T("Arriba/abajo: desplazar (izquierda/derecha: de 10 en 10). A: instalar. B: volver.",
+                                  "Up/down: scroll (left/right: 10 lines). A: install. B: back.")
+                              : T("Arriba/abajo: desplazar (izquierda/derecha: de 10 en 10). B: volver.",
+                                  "Up/down: scroll (left/right: 10 lines). B: back.");
+        } else if (m.warpPage) {
             ImGui::TextColored(kAccent, "%s", T("Viajar a...   (B: volver)", "Travel to...   (B: back)"));
             const int count = kMainWarpCount + kAllWarpCount;
             for (int i = 0; i < count; i++) {
@@ -1879,11 +2018,12 @@ void drawPopup() {
     }
     ImGui::PopTextWrapPos();
     ImGui::Spacing();
-    const char* choices[3] = {T("Actualizar ahora", "Update now"), T("Más tarde", "Later"),
-                              T("No avisar de esta versión", "Don't tell me about this version")};
-    for (int i = 0; i < 3; i++) {
+    const char* choices[kPopupChoices] = {T("Actualizar ahora", "Update now"),
+                                          T("Ver notas de la versión", "Read the release notes"), T("Más tarde", "Later"),
+                                          T("No avisar de esta versión", "Don't tell me about this version")};
+    for (int i = 0; i < kPopupChoices; i++) {
         const bool sel = i == m.popupRow;
-        const bool usable = i != 0 || info.canInstall;
+        const bool usable = popupUsable(i, info);
         ImGui::TextColored(!usable ? kDim : sel ? kAccent : ImVec4(1, 1, 1, 1), "%s%s%s", sel ? "> " : "  ", choices[i],
                            sel ? " <" : "");
     }
@@ -2224,6 +2364,15 @@ void smokeFrame(unsigned int frame) {
                 smokeError("update %s, expected %s", std::string(name) + " (" + info.detail + ")", e.a);
             } else {
                 writef(STDERR_FILENO, "[cos] options-menu: ok update %s %s\n", name, info.latest);
+            }
+        } else if (e.kind == "notes-page") {
+            // the release notes page is open (1) or not (0), with these notes' first heading
+            const std::string notes = updateNotes();
+            const bool ok = (m.notesPage ? 1 : 0) == atoi(e.a.c_str()) && (e.b.empty() || notes.find("# " + e.b) != std::string::npos);
+            if (!ok) {
+                smokeError("notes page %s, expected %s", std::string(m.notesPage ? "1" : "0") + " notes=" + notes, e.a + " " + e.b);
+            } else {
+                writef(STDERR_FILENO, "[cos] options-menu: ok notes page %s\n", e.a.c_str());
             }
         } else if (e.kind == "update-file") {
             // a file of the install directory (COS_UPDATE_DIR) whose text starts with this ("-": absent)

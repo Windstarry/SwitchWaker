@@ -175,6 +175,52 @@ void testUpdateCore() {
         CHECK(!parseRelease("", &r, &err));
         CHECK(!parseRelease("<html>", &r, &err));
     }
+    // Release notes: Markdown to the menu's plain Latin-1 lines.
+    {
+        Release r;
+        std::string err;
+        CHECK(parseRelease("{\"tag_name\":\"v1.0.0\",\"body\":\"## New\\r\\n- **Bold** [#15](https://x/15) and `code`\"}", &r, &err));
+        CHECK(r.body == "## New\r\n- **Bold** [#15](https://x/15) and `code`");
+        CHECK(parseRelease("{\"tag_name\":\"v1.0.0\",\"body\":null}", &r, &err) && r.body.empty());
+        const std::string md =
+            "SwitchWaker runs \xE2\x80\x9CThe Wind Waker\xE2\x80\x9D \xE2\x80\x94 natively\xE2\x80\xA6 \xF0\x9F\x8E\x89 caf\xC3\xA9\r\n"
+            "\r\n\r\n"
+            "## New\r\n"
+            "\r\n"
+            "- **Button remapping** ([#15](https://github.com/x/issues/15)): a new **Controls** tab\r\n"
+            "  - Pick a row, then press `ZL` \xE2\x86\x92 done\r\n"
+            "* star item with ![img](https://x/a.png) and <https://example.com>\r\n"
+            "<!-- a comment -->\r\n"
+            "## Install / update\r\n"
+            "| Your disc | Download |\r\n"
+            "|---|---|\r\n"
+            "| USA | `x.zip` |\r\n"
+            "### Sub of install\r\n"
+            "skipped too\r\n"
+            "## Known issues\r\n"
+            "| a | b |\r\n"
+            "|:-|-:|\r\n"
+            "| one | **two** |\r\n"
+            "Escaped \\*star\\* and 2 * 3\r\n"
+            "\r\n";
+        const std::string want =
+            "SwitchWaker runs \"The Wind Waker\" - natively...  caf\xC3\xA9\n"
+            "# New\n"
+            "- Button remapping (#15): a new Controls tab\n"
+            "  - Pick a row, then press ZL -> done\n"
+            "- star item with img and https://example.com\n"
+            "# Known issues\n"
+            "a \xC2\xB7 b\n"
+            "one \xC2\xB7 two\n"
+            "Escaped *star* and 2 * 3\n";
+        const std::string got = notesFromMarkdown(md);
+        CHECK(got == want);
+        if (got != want) {
+            std::fprintf(stderr, "notes:\n%s---\n", got.c_str());
+        }
+        CHECK(notesFromMarkdown("").empty());
+        CHECK(notesFromMarkdown("\n\n").empty());
+    }
     // Install names: only plain files under switch/switchwaker/.
     {
         std::string n;
@@ -317,7 +363,8 @@ struct Fixture {
         writeAll(rel + "/" + zipName + ".sha256", hex + "  " + zipName + "\n");
         const std::string name = usaZip ? zipName : "SwitchWaker-v0.5.1-switch-eur.zip";
         writeAll(rel + "/latest.json",
-                 "{\"tag_name\":\"v0.5.1\",\"name\":\"SwitchWaker v0.5.1\",\"html_url\":\"https://example/r\",\"assets\":["
+                 "{\"tag_name\":\"v0.5.1\",\"name\":\"SwitchWaker v0.5.1\",\"html_url\":\"https://example/r\","
+                 "\"body\":\"## New\\r\\n- Faster **ZL**\\r\\n## Install / update\\r\\n- copy\",\"assets\":["
                  "{\"name\":\"" + name + "\",\"size\":" + std::to_string(zip.size()) +
                  ",\"browser_download_url\":\"file://" + rel + "/" + zipName + "\"},"
                  "{\"name\":\"" + name + ".sha256\",\"size\":96,\"browser_download_url\":\"file://" + rel + "/" + zipName +
@@ -403,6 +450,10 @@ void testUpdateFlow() {
     info = waitIdle();
     CHECK(info.status == PC_UPDATE_AVAILABLE && std::strcmp(info.latest, "v0.5.1") == 0 &&
           std::strcmp(info.title, "SwitchWaker v0.5.1") == 0 && info.fromStart && !info.skipped && info.canInstall);
+    {
+        char notes[256];
+        CHECK(pc_update_get_notes(notes, sizeof(notes)) > 0 && std::strcmp(notes, "# New\n- Faster ZL\n") == 0);
+    }
     pc_update_check(1, "v0.5.1"); // the player chose not to be told about v0.5.1
     info = waitIdle();
     CHECK(info.status == PC_UPDATE_AVAILABLE && info.skipped);
