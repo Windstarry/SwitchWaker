@@ -371,6 +371,8 @@ void eventWatchReport(unsigned int frames);
 void stageHopFrame(unsigned int frames);
 // COS_SMOKE=camera-invert (pc_camera_invert.cpp): the inverted camera axes.
 void cameraInvertFrame(unsigned int frames);
+// COS_SMOKE=vibration (pc_vibration.cpp): camera shakes with 0-bit patterns (d_vibration.cpp).
+void vibrationFrame(unsigned int frames);
 
 // pc_shot.cpp: parses COS_SHOT / COS_SHOT_EVERY (exit PC_EXIT_USAGE if malformed); without
 // them the screenshots stay off. Returns whether any frame will be captured.
