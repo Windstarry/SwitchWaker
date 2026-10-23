@@ -27,13 +27,14 @@ drafts and pre-releases are never offered.
 
 ## Check (#27)
 
-- At start, when **Sistema > Buscar actualizaciones al arrancar** (`COS_UPDATE_CHECK`, default on)
+- At start, when **Sistema > Buscar actualizaciones al arrancar** (`COS_UPDATE_CHECK`, default on; the
+  Sistema tab sits before Depuración, which stays last)
   is on and the version is a release one: a background thread (host memory) GETs
   `https://api.github.com/repos/centollOS/SwitchWaker/releases/latest` (`COS_UPDATE_URL` overrides,
   for tests), with a User-Agent, and reads `tag_name`, `name`, `html_url` and the assets' `name`,
   `browser_download_url` and `size`. It never delays boot. Offline, rate-limited (60/hour/IP) or any
   error: one log line, nothing on screen.
-- Newer: a popup outside the PLAY scene (title, file select): current -> latest, release title,
+- Newer: a popup once the logo is over and outside the PLAY scene (title, file select): current -> latest, release title,
   **Actualizar ahora** / **Más tarde** / **No avisar de esta versión** (`COS_UPDATE_SKIP=<tag>`, a
   setting without a menu row). During PLAY it waits for the next non-PLAY scene; the Sistema tab
   shows it any time.
@@ -97,6 +98,15 @@ before anything that could crash:
 - `pc_menu.cpp`: the Sistema tab (the two rows) and the popup.
 - `switch/native/source/cos_switch.cpp`: socket init shared with the debug server, forwarder
   detection, restart with a reason, free space.
+
+## Tests
+
+- `cos_update_tests` (in `native/tools/regress.sh`): the pure part and the whole flow on `file://`
+  fixtures (install, confirm, failed first start and rollback, interrupted swap, bad checksum, bad zip,
+  no zip for the region, failed checks). `cos_update_tests --live`: GitHub for real, the latest release
+  installed into a temporary directory.
+- Smokes `options-menu --input native/check/input/menu-update.txt` and `menu-update-skip.txt`: the popup
+  on the title screen with the fixture release `native/check/update` (v9.9.9).
 
 ## Steps (one commit each)
 

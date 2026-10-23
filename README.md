@@ -280,8 +280,9 @@ The previous renderer, OpenGL ES on Mesa (`switchwaker_gl.nro`, "SwitchWaker (GL
 
 - Saves (the memory card): `sdmc:/switch/switchwaker/native/user/USA/Card A`. Back up this folder.
 - Settings from the options menu: `native/user/settings.ini`.
-- To update, replace `switchwaker.nro`, `initial_pipeline_cache.db` and `initial_dksh_cache.bin`. Saves,
-  settings and caches stay.
+- To update: the game offers a new release at start and installs it itself (options menu > *Sistema*,
+  [INSTALL.md](INSTALL.md), "Updating"), or by hand replace `switchwaker.nro`, `initial_pipeline_cache.db`
+  and `initial_dksh_cache.bin`. Saves, settings and caches stay.
 - Logs, if something goes wrong: `native/logs/`, one file per session named by its date and time
   (`switchwaker_<date>_<time>.log`); the newest is this run. Only the 10 most recent sessions are kept.
 - If you used this port's earlier SD folder (`sdmc:/switch/centollos/`), rename it to
