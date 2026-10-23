@@ -803,6 +803,12 @@ void pc_update_boot(void) {
         s.confirmPending = true;
         s.pendingJournal = j;
         say("first start of %s: confirmed once a scene after the logo runs", j.tag.c_str());
+        if (const char* fail = getenv("COS_UPDATE_FAIL_FIRST_START"); fail != nullptr && strcmp(fail, "1") == 0) {
+            // test of the rollback (docs/AUTO_UPDATE_PLAN.md): a new version that dies before the logo
+            say("COS_UPDATE_FAIL_FIRST_START=1: ending this first start before the logo");
+            fflush(stderr);
+            abort();
+        }
         return;
     }
     // "booting": the last start of this version never got past the logo
