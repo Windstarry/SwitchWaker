@@ -3,6 +3,7 @@
 #include "pc_internal.h"
 #include "pc/pc_settings.h"
 #include "pc/pc_aspect.h"
+#include "pc/pc_update.h"
 
 #include <atomic>
 #include <cerrno>
@@ -146,6 +147,9 @@ void pc_harness_init(int argc, char* argv[]) {
     // The options menu's settings file (pc_settings.h) into the environment before anything reads
     // it (on the Switch cos_switch_start did it already, before its defaults).
     pc_settings_load_early();
+    // An install the last session left half done, or a new version's first start (pc_update.h): as
+    // early as the settings allow (on the Switch cos_switch_start did it already).
+    pc_update_boot();
 
     // Line-buffered stdout: the game reports with printf/OSReport into a pipe or file; a watchdog
     // or crash exit must not lose the last lines in a full buffer.

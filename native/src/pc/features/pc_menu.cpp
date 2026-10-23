@@ -7,8 +7,8 @@
 // and gets no controller input (Aurora's PADBlockInput; the buttons still held when it closes are
 // ignored until released). Other scenes (title, name entry) keep running behind it, without input.
 //
-// One ImGui window with five tabs, Gráficos, Controles, Rendimiento, Calidad de vida and Depuración
-// (in that order on screen, kTabOrder), navigated by the controller (D-pad or stick: row and value;
+// One ImGui window with six tabs, Gráficos, Controles, Rendimiento, Calidad de vida, Sistema and
+// Depuración (in that order on screen, kTabOrder; the developer's tab last), navigated by the controller (D-pad or stick: row and value;
 // A: change / confirm; B: back / close; L/R: tab), the keyboard (arrows, Enter, Esc, Q/E) or the mouse
 // (click a tab, a row, a value). The menu reads the controllers itself (SDL gamepads, labels of the
 // face buttons respected, so A is A on a Switch-style layout too), plus the COS_INPUT script in
@@ -22,6 +22,13 @@
 // marked per mode keep one value for handheld and one for docked; the "Perfil a editar" row picks
 // which one the rows show and change, and pc_settings_poll_mode applies the other mode's values when
 // the console is docked or undocked.
+//
+// Updates (pc_update.h, issues #27/#28; docs/AUTO_UPDATE_PLAN.md): with Sistema > "Buscar actualizaciones al
+// arrancar" on, the first frame asks GitHub for the latest release in the background. A newer one the
+// player was not told to forget brings up a popup outside the PLAY scene (title, file select): update now,
+// later, or not about this version (COS_UPDATE_SKIP, a setting without a row). Found during play, it is a
+// short notice instead. The Sistema tab's "Actualización" row checks, installs and restarts. A short
+// notice also says what the start found (the first start of an installed version, a rollback).
 //
 // COS_SMOKE=options-menu (with COS_INPUT and usually COS_BOOT_STAGE): drives the menu through the
 // script and checks the "#expect" lines of the script file (see smokeParse below): the menu opened,
@@ -38,6 +45,7 @@
 #include "pc/pc_button_remap.h"
 #include "pc/pc_controls.h"
 #include "pc/pc_qol.h"
+#include "pc/pc_update.h"
 #include "features/pc_button_remap_map.h"
 
 #include "d/d_com_inf_game.h"
@@ -69,6 +77,7 @@
 #include <mutex>
 #include <string>
 #include <strings.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #include <vector>
 
@@ -717,6 +726,17 @@ const PcSettingDesc kBuiltins[] = {
      "Debug server (network)",
      "For development only: opens a port on the local network, without a password, for scripts/switch/"
      "switchwaker_debug.py (log, screenshots, warps, files). See docs/DEBUG_SERVER.md."},
+    // Sistema (pc_update.h, issues #27/#28)
+    {"COS_UPDATE_CHECK", "Buscar actualizaciones al arrancar",
+     "Al arrancar pregunta a GitHub si hay una versión nueva de SwitchWaker y avisa (necesita internet). No "
+     "retrasa el arranque.",
+     PC_SETTING_TAB_SYSTEM, PC_SETTING_SWITCH_ONLY, CHOICES(kOnOff), "1", nullptr, nullptr, 10,
+     "Check for updates at start",
+     "At start, asks GitHub whether there is a new SwitchWaker version and says so (needs the internet). It "
+     "does not delay the start."},
+    {"COS_UPDATE_SKIP", "Versión que no avisar", "La versión nueva de la que el jugador no quiere aviso al arrancar.",
+     PC_SETTING_TAB_SYSTEM, PC_SETTING_HIDDEN, nullptr, 0, "", nullptr, nullptr, 900,
+     "Version not to announce", "The new version the player does not want to be told about at start."},
 };
 
 // ---- menu state ----------------------------------------------------------------------------------
@@ -733,7 +753,8 @@ enum class RowKind {
     QolBetterWW,
     QolOriginal,
     Remap,
-    RemapRestore
+    RemapRestore,
+    Update
 };
 
 struct Row {
@@ -744,11 +765,11 @@ struct Row {
 
 // Indexed by PcSettingTab; kTabOrder is the order on screen (and of L/R).
 const char* const kTabNames[PC_SETTING_TABS] = {"Gráficos", "Rendimiento", "Calidad de vida", "Depuración",
-                                                "Controles"};
+                                                "Controles", "Sistema"};
 const char* const kTabNamesEn[PC_SETTING_TABS] = {"Graphics", "Performance", "Quality of life", "Debug",
-                                                  "Controls"};
+                                                  "Controls", "System"};
 const int kTabOrder[PC_SETTING_TABS] = {PC_SETTING_TAB_GRAPHICS, PC_SETTING_TAB_CONTROLS, PC_SETTING_TAB_PERFORMANCE,
-                                        PC_SETTING_TAB_QOL, PC_SETTING_TAB_DEBUG};
+                                        PC_SETTING_TAB_QOL, PC_SETTING_TAB_SYSTEM, PC_SETTING_TAB_DEBUG};
 
 // The position on screen of a tab.
 int tabPosition(int tab) {
@@ -784,6 +805,17 @@ struct Menu {
     bool captureArmed = false;
     uint64_t captureStartMs = 0;
     bool captureRelease = false;
+    // Updates (pc_update.h): the check at start was asked; the popup (open, its row, shown once per
+    // start); a short notice outside the menu; the restart's second A in the PLAY scene.
+    bool updateChecked = false;
+    bool popup = false;
+    int popupRow = 0;
+    bool popupDone = false;
+    bool playNoticeDone = false;
+    PcUpdateBootResult bootShown = PC_UPDATE_BOOT_NONE;
+    std::string notice;
+    unsigned int noticeUntil = 0;
+    unsigned int restartArmedUntil = 0;
 } m;
 
 void toast(const std::string& text) {
@@ -810,6 +842,9 @@ std::vector<Row> rowsOf(int tab) {
         rows.push_back({RowKind::QolBetterWW});
         rows.push_back({RowKind::QolOriginal});
     }
+    if (tab == PC_SETTING_TAB_SYSTEM) {
+        rows.push_back({RowKind::Update});
+    }
     if (tab == PC_SETTING_TAB_DEBUG) {
         rows.push_back({RowKind::Warp});
         rows.push_back({RowKind::Sailing});
@@ -818,7 +853,7 @@ std::vector<Row> rowsOf(int tab) {
     }
     for (int i = 0; i < pc_settings_count(); i++) {
         const PcSettingDesc* d = pc_settings_at(i);
-        if (d == nullptr || d->tab != tab) {
+        if (d == nullptr || d->tab != tab || (d->flags & PC_SETTING_HIDDEN)) {
             continue;
         }
         if (d->flags & PC_SETTING_REMAP) {
@@ -1075,6 +1110,294 @@ void captureFrame() {
     }
 }
 
+// ---- updates (pc_update.h) -----------------------------------------------------------------------
+
+uint32_t pressed(uint32_t keys);
+
+void* isAfterLogoScene(void* proc, void*) {
+    switch (fpcM_GetName(proc)) {
+    case fpcNm_MENU_SCENE_e:
+    case fpcNm_PLAY_SCENE_e:
+    case fpcNm_OPENING_SCENE_e:
+    case fpcNm_OPENING2_SCENE_e:
+    case fpcNm_TITLE_SCENE_e:
+    case fpcNm_ENDING_SCENE_e:
+    case fpcNm_NAME_SCENE_e:
+    case fpcNm_NAMEEX_SCENE_e:
+    case fpcNm_OPEN_SCENE_e:
+    case fpcNm_OPEN2_SCENE_e:
+        return proc;
+    default:
+        return nullptr;
+    }
+}
+
+// A scene after the logo runs: the shader preload is over and the game got going (it confirms a
+// version the game installed, pc_update_frame).
+bool afterLogo() {
+    return fpcM_Search(isAfterLogoScene, nullptr) != nullptr;
+}
+
+void notice(const std::string& text) {
+    m.notice = text;
+    m.noticeUntil = pc_frame_count() + 300;
+    writef(STDERR_FILENO, "[cos] menu: notice: %s\n", text.c_str());
+}
+
+const char* updateErrorText(PcUpdateError e) {
+    switch (e) {
+    case PC_UPDATE_ERR_NETWORK: return T("sin conexión con GitHub", "no connection to GitHub");
+    case PC_UPDATE_ERR_SERVER: return T("GitHub no dio una respuesta válida", "GitHub gave no usable answer");
+    case PC_UPDATE_ERR_NO_ASSET: return T("la versión no trae el zip de esta región", "the release has no zip for this region");
+    case PC_UPDATE_ERR_NOT_HERE:
+        return T("el juego no está en /switch/switchwaker/switchwaker.nro", "the game is not in /switch/switchwaker/switchwaker.nro");
+    case PC_UPDATE_ERR_NO_SPACE: return T("no hay espacio en la tarjeta SD", "not enough space on the SD card");
+    case PC_UPDATE_ERR_CHECKSUM: return T("la descarga llegó dañada (SHA-256)", "the download arrived damaged (SHA-256)");
+    case PC_UPDATE_ERR_BAD_ZIP: return T("el zip de la versión no es válido", "the release's zip is not valid");
+    case PC_UPDATE_ERR_WRITE: return T("no se pudo escribir en la tarjeta SD", "could not write to the SD card");
+    case PC_UPDATE_OK: break;
+    }
+    return T("error", "error");
+}
+
+void checkForUpdates(bool atStart) {
+    pc_update_check(atStart ? 1 : 0, pc_settings_get("COS_UPDATE_SKIP"));
+}
+
+void requestRestart() {
+    if (!mDoMemCd_isCardCommNone()) {
+        toast(T("Espera: se está guardando la partida", "Wait: the game is being saved"));
+        return;
+    }
+    if (inPlay() && pc_frame_count() >= m.restartArmedUntil) {
+        m.restartArmedUntil = pc_frame_count() + 150;
+        toast(T("Pulsa A otra vez para reiniciar: se pierde lo que no hayas guardado",
+                "Press A again to restart: anything not saved is lost"));
+        return;
+    }
+    if (!pc_update_restart()) {
+        toast(T("Cierra el juego y vuelve a abrirlo para usar la versión nueva",
+                "Close the game and open it again to run the new version"));
+    }
+}
+
+// The Sistema tab's "Actualización" row: A checks, installs or restarts, by the state.
+void activateUpdate() {
+    PcUpdateInfo info;
+    pc_update_get_info(&info);
+    switch (info.status) {
+    case PC_UPDATE_AVAILABLE:
+    case PC_UPDATE_INSTALL_FAILED:
+        if (!info.canInstall) {
+            toast(std::string(T("No se puede actualizar desde aquí: ", "Cannot update from here: ")) +
+                  updateErrorText(PC_UPDATE_ERR_NOT_HERE));
+        } else if (pc_update_install()) {
+            writef(STDERR_FILENO, "[cos] menu: installing %s\n", info.latest);
+        }
+        break;
+    case PC_UPDATE_INSTALLED:
+        requestRestart();
+        break;
+    case PC_UPDATE_CHECKING:
+    case PC_UPDATE_DOWNLOADING:
+    case PC_UPDATE_INSTALLING:
+        break;
+    case PC_UPDATE_DISABLED:
+        toast(T("Esta es una versión de desarrollo: no busca actualizaciones",
+                "This is a development build: it does not check for updates"));
+        break;
+    default:
+        checkForUpdates(false);
+        break;
+    }
+}
+
+std::string updateValue() {
+    PcUpdateInfo info;
+    pc_update_get_info(&info);
+    char text[128];
+    switch (info.status) {
+    case PC_UPDATE_IDLE: return T("A: buscar", "A: check");
+    case PC_UPDATE_DISABLED: return T("versión de desarrollo", "development build");
+    case PC_UPDATE_CHECKING: return T("Buscando...", "Checking...");
+    case PC_UPDATE_UP_TO_DATE:
+        snprintf(text, sizeof(text), T("Al día (%s)", "Up to date (%s)"), info.current);
+        return text;
+    case PC_UPDATE_CHECK_FAILED: return T("No se pudo buscar (A: reintentar)", "Check failed (A: retry)");
+    case PC_UPDATE_AVAILABLE:
+        snprintf(text, sizeof(text), info.canInstall ? T("A: instalar %s", "A: install %s") : T("%s disponible", "%s available"),
+                 info.latest);
+        return text;
+    case PC_UPDATE_DOWNLOADING:
+        if (info.total > 0) {
+            snprintf(text, sizeof(text), T("Descargando %d %%", "Downloading %d%%"),
+                     (int)(std::min<uint64_t>(info.done, info.total) * 100 / info.total));
+            return text;
+        }
+        return T("Descargando...", "Downloading...");
+    case PC_UPDATE_INSTALLING: return T("Instalando...", "Installing...");
+    case PC_UPDATE_INSTALLED:
+        return pc_update_can_restart() ? T("Instalada (A: reiniciar)", "Installed (A: restart)")
+                                       : T("Instalada: reinicia el juego", "Installed: restart the game");
+    case PC_UPDATE_INSTALL_FAILED: return T("Falló (A: reintentar)", "Failed (A: retry)");
+    }
+    return "";
+}
+
+std::string updateHelp() {
+    PcUpdateInfo info;
+    pc_update_get_info(&info);
+    char text[512];
+    switch (info.status) {
+    case PC_UPDATE_AVAILABLE:
+        if (info.canInstall) {
+            snprintf(text, sizeof(text),
+                     T("%s (tienes la %s). A la descarga (unos 10 MB), la comprueba y cambia los archivos del juego; "
+                       "partidas, ajustes y disco no se tocan. Si la versión nueva no arranca, vuelve sola la anterior.",
+                       "%s (you have %s). A downloads it (about 10 MB), checks it and replaces the game's files; saves, "
+                       "settings and disc are untouched. If the new version does not start, the old one comes back by itself."),
+                     info.title[0] != '\0' ? info.title : info.latest, info.current);
+        } else {
+            snprintf(text, sizeof(text),
+                     T("%s (tienes la %s). Esta copia no puede actualizarse sola (%s): copia la carpeta switch del zip de "
+                       "la versión sobre la tarjeta SD.",
+                       "%s (you have %s). This copy cannot update itself (%s): copy the release zip's switch folder onto "
+                       "the SD card."),
+                     info.title[0] != '\0' ? info.title : info.latest, info.current, updateErrorText(PC_UPDATE_ERR_NOT_HERE));
+        }
+        return text;
+    case PC_UPDATE_INSTALLED:
+        snprintf(text, sizeof(text),
+                 pc_update_can_restart()
+                     ? T("%s está instalada. A reinicia el juego con ella (guarda antes la partida).",
+                         "%s is installed. A restarts the game with it (save your game first).")
+                 : kSwitch ? T("%s está instalada. Cierra el juego y ábrelo de nuevo desde el Homebrew Menu.",
+                               "%s is installed. Close the game and open it again from the Homebrew Menu.")
+                           : T("%s está instalada. Cierra el juego y ábrelo de nuevo.",
+                               "%s is installed. Close the game and open it again."),
+                 info.latest);
+        return text;
+    case PC_UPDATE_CHECK_FAILED:
+    case PC_UPDATE_INSTALL_FAILED:
+        snprintf(text, sizeof(text), "%s: %s (%s)", T("No se pudo", "It failed"), updateErrorText(info.error), info.detail);
+        return text;
+    case PC_UPDATE_DISABLED:
+        return T("Las versiones de desarrollo no buscan actualizaciones.", "Development builds do not check for updates.");
+    default:
+        snprintf(text, sizeof(text),
+                 T("Versión instalada: %s. A pregunta a GitHub si hay una nueva (necesita internet).",
+                   "Installed version: %s. A asks GitHub whether there is a new one (needs the internet)."),
+                 info.current);
+        return text;
+    }
+}
+
+void openUpdateRow() {
+    m.tab = PC_SETTING_TAB_SYSTEM;
+    m.row[PC_SETTING_TAB_SYSTEM] = 0; // "Actualización"
+    setOpen(true);
+}
+
+// Once per frame, menu open or not: the check at start, the confirmation of an installed version, the
+// popup and the notices.
+void updateFrame() {
+    pc_update_frame(afterLogo() ? 1 : 0);
+    if (!m.updateChecked) {
+        m.updateChecked = true;
+        if (strcmp(pc_settings_get("COS_UPDATE_CHECK"), "0") != 0) {
+            checkForUpdates(true);
+        }
+    }
+    PcUpdateInfo info;
+    pc_update_get_info(&info);
+    if (info.boot != m.bootShown) {
+        m.bootShown = info.boot;
+        char text[160];
+        switch (info.boot) {
+        case PC_UPDATE_BOOT_FIRST_START:
+            snprintf(text, sizeof(text), T("SwitchWaker actualizado a %s", "SwitchWaker updated to %s"), info.bootTag);
+            notice(text);
+            break;
+        case PC_UPDATE_BOOT_FAILED_BACK:
+            snprintf(text, sizeof(text), T("%s no llegó a arrancar: vuelve a estar la versión anterior",
+                                           "%s did not start: the previous version is back"),
+                     info.bootTag);
+            notice(text);
+            break;
+        case PC_UPDATE_BOOT_ROLLED_BACK:
+            snprintf(text, sizeof(text), T("La instalación de %s no terminó y se ha deshecho",
+                                           "The install of %s did not finish and was undone"),
+                     info.bootTag);
+            notice(text);
+            break;
+        case PC_UPDATE_BOOT_NONE: break;
+        }
+    }
+    const bool announce = info.status == PC_UPDATE_AVAILABLE && info.fromStart && !info.skipped;
+    if (announce && !m.popupDone && !m.open && !m.popup && !inPlay() && afterLogo()) {
+        m.popup = true;
+        m.popupDone = true;
+        m.popupRow = info.canInstall ? 0 : 1;
+        m.waitRelease = true;
+        PADBlockInput(true);
+        writef(STDERR_FILENO, "[cos] menu: update popup for %s\n", info.latest);
+    } else if (announce && !m.popupDone && !m.playNoticeDone && inPlay()) {
+        // found during play: no popup over the game, a notice that points at the menu
+        m.playNoticeDone = true;
+        char text[160];
+        snprintf(text, sizeof(text), T("Hay una versión nueva, %s: Menos > Sistema", "A new version, %s: Minus > System"),
+                 info.latest);
+        notice(text);
+    }
+}
+
+void closePopup() {
+    m.popup = false;
+    m.waitRelease = true;
+    PADBlockInput(m.open);
+}
+
+// The popup's three choices: update now (opens the Sistema tab and starts), later, not this version.
+void popupInput(uint32_t keys) {
+    const uint32_t p = pressed(keys);
+    if (m.waitRelease) {
+        if (keys == 0) {
+            m.waitRelease = false;
+        }
+        return;
+    }
+    PcUpdateInfo info;
+    pc_update_get_info(&info);
+    const int first = info.canInstall ? 0 : 1;
+    if (p & kUp) {
+        m.popupRow = std::max(first, m.popupRow - 1);
+    }
+    if (p & kDown) {
+        m.popupRow = std::min(2, m.popupRow + 1);
+    }
+    if (p & (kBack | kCombo)) {
+        writef(STDERR_FILENO, "[cos] menu: update popup: later\n");
+        closePopup();
+        return;
+    }
+    if (!(p & kConfirm)) {
+        return;
+    }
+    if (m.popupRow == 0) {
+        writef(STDERR_FILENO, "[cos] menu: update popup: update now\n");
+        closePopup();
+        openUpdateRow();
+        pc_update_install();
+    } else if (m.popupRow == 2) {
+        writef(STDERR_FILENO, "[cos] menu: update popup: not about %s\n", info.latest);
+        pc_settings_set("COS_UPDATE_SKIP", info.latest);
+        closePopup();
+    } else {
+        writef(STDERR_FILENO, "[cos] menu: update popup: later\n");
+        closePopup();
+    }
+}
+
 void activate(const Row& r, int dir) {
     if (m.captureAction >= 0) {
         return;
@@ -1123,6 +1446,11 @@ void activate(const Row& r, int dir) {
         if (dir == 0) {
             pc_button_remap_restore_defaults();
             toast(T("Controles por defecto restaurados", "Default controls restored"));
+        }
+        break;
+    case RowKind::Update:
+        if (dir == 0) {
+            activateUpdate();
         }
         break;
     }
@@ -1235,6 +1563,7 @@ std::string rowLabel(const Row& r) {
     case RowKind::QolOriginal: return T("Valores originales", "Original values");
     case RowKind::RemapRestore: return T("Restaurar controles por defecto", "Restore default controls");
     case RowKind::Remap: return settingLabel(r.desc);
+    case RowKind::Update: return T("Actualización", "Update");
     case RowKind::Setting: break;
     }
     std::string s = settingLabel(r.desc);
@@ -1255,6 +1584,7 @@ std::string rowValue(const Row& r) {
     case RowKind::QolBetterWW:
     case RowKind::QolOriginal: return T("A: aplicar", "A: apply");
     case RowKind::RemapRestore: return T("A: restaurar", "A: restore");
+    case RowKind::Update: return updateValue();
     case RowKind::Remap: {
         if (r.action == m.captureAction) {
             const uint64_t elapsed = std::min<uint64_t>(nowMs() - m.captureStartMs, kCaptureMs);
@@ -1331,6 +1661,8 @@ std::string rowHelp(const Row& r) {
                  "de settings.ini hace lo mismo.",
                  "Puts every action back on its usual button. Outside the game: deleting the COS_PAD_ lines of "
                  "settings.ini does the same.");
+    case RowKind::Update:
+        return updateHelp();
     case RowKind::Remap:
         if (r.action == m.captureAction) {
             return T("Pulsa el botón que hará esta acción; si ya hacía otra, se intercambian. Menos cancela.",
@@ -1516,6 +1848,70 @@ void drawMenu() {
     ImGui::End();
 }
 
+// The update popup (updateFrame): a small window over the title or the file select.
+void drawPopup() {
+    PcUpdateInfo info;
+    pc_update_get_info(&info);
+    ImGuiIO& io = ImGui::GetIO();
+    const float scale = std::max(1.0f, io.DisplaySize.y / 720.0f * 1.7f);
+    ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.5f, io.DisplaySize.y * 0.5f), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
+    ImGui::SetNextWindowSize(ImVec2(std::min(io.DisplaySize.x * 0.9f, 560.0f * scale), 0.0f), ImGuiCond_Always);
+    ImGui::SetNextWindowBgAlpha(0.92f);
+    constexpr ImGuiWindowFlags kFlags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings |
+                                        ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_AlwaysAutoResize;
+    if (!ImGui::Begin("##cos_update_popup", nullptr, kFlags)) {
+        ImGui::End();
+        return;
+    }
+    ImGui::SetWindowFontScale(scale);
+    ImGui::SetWindowFocus();
+    ImGui::TextColored(kAccent, "%s", T("Hay una versión nueva de SwitchWaker", "A new SwitchWaker version is out"));
+    ImGui::Separator();
+    ImGui::PushTextWrapPos(0.0f);
+    ImGui::Text("%s", info.title[0] != '\0' ? info.title : info.latest);
+    ImGui::TextColored(kDim, T("Tienes la %s. La nueva es la %s.", "You have %s. The new one is %s."), info.current,
+                       info.latest[0] == 'v' ? info.latest + 1 : info.latest);
+    if (!info.canInstall) {
+        ImGui::TextColored(kWarn, "%s", T("Esta copia no puede actualizarse sola: copia la carpeta switch del zip de la "
+                                          "versión sobre la tarjeta SD.",
+                                          "This copy cannot update itself: copy the release zip's switch folder onto the "
+                                          "SD card."));
+    }
+    ImGui::PopTextWrapPos();
+    ImGui::Spacing();
+    const char* choices[3] = {T("Actualizar ahora", "Update now"), T("Más tarde", "Later"),
+                              T("No avisar de esta versión", "Don't tell me about this version")};
+    for (int i = 0; i < 3; i++) {
+        const bool sel = i == m.popupRow;
+        const bool usable = i != 0 || info.canInstall;
+        ImGui::TextColored(!usable ? kDim : sel ? kAccent : ImVec4(1, 1, 1, 1), "%s%s%s", sel ? "> " : "  ", choices[i],
+                           sel ? " <" : "");
+    }
+    ImGui::Spacing();
+    ImGui::TextColored(kDim, "%s", kSwitch ? T("A: elegir   B: más tarde", "A: choose   B: later")
+                                           : T("A/Intro: elegir   B/Esc: más tarde", "A/Enter: choose   B/Esc: later"));
+    ImGui::End();
+}
+
+// A short line at the top of the screen (updateFrame's notices), menu open or not.
+void drawNotice() {
+    if (m.notice.empty() || pc_frame_count() >= m.noticeUntil) {
+        return;
+    }
+    ImGuiIO& io = ImGui::GetIO();
+    const float scale = std::max(1.0f, io.DisplaySize.y / 720.0f * 1.5f);
+    ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.5f, io.DisplaySize.y * 0.04f), ImGuiCond_Always, ImVec2(0.5f, 0.0f));
+    ImGui::SetNextWindowBgAlpha(0.85f);
+    constexpr ImGuiWindowFlags kFlags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings |
+                                        ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoInputs |
+                                        ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoFocusOnAppearing;
+    if (ImGui::Begin("##cos_update_notice", nullptr, kFlags)) {
+        ImGui::SetWindowFontScale(scale);
+        ImGui::TextColored(kAccent, "%s", m.notice.c_str());
+    }
+    ImGui::End();
+}
+
 // ---- COS_SMOKE=options-menu ----------------------------------------------------------------------
 
 struct Expect {
@@ -1534,6 +1930,7 @@ struct Smoke {
     unsigned int openFrames = 0;
     unsigned int pausedChecks = 0;
     bool runCard = false; // "#card run"
+    bool title = false;   // "#title"
 } sSmoke;
 
 void smokeError(const char* fmt, const std::string& a, const std::string& b = "") {
@@ -1582,12 +1979,38 @@ void smokeParse() {
             sSmoke.runCard = true;
             continue;
         }
+        if (strncmp(line, "#title", 6) == 0) {
+            sSmoke.title = true; // the menu is only used outside the PLAY scene: no pause to check
+            continue;
+        }
+        char rel[256] = {};
+        if (sscanf(line, "#update-release %255s", rel) == 1) {
+            // pc_update.h: the release fixture next to the script (native/check/update), checked as
+            // version 0.4.2, installed into the run directory
+            std::string dir = gConfig.input;
+            dir = dir.substr(0, dir.rfind('/') + 1) + rel;
+            setenv("COS_UPDATE_URL", ("file://" + dir + "/latest.json").c_str(), 1);
+            setenv("COS_UPDATE_VERSION", "0.4.2", 1);
+            const char* run = getenv("COS_RUN_DIR");
+            std::string sd = std::string(run != nullptr ? run : ".") + "/sd";
+            for (const char* part : {"", "/switch", "/switch/switchwaker"}) {
+                mkdir((sd + part).c_str(), 0777);
+            }
+            setenv("COS_UPDATE_DIR", (sd + "/switch/switchwaker").c_str(), 1);
+            continue;
+        }
         if (strncmp(line, "#expect ", 8) != 0) {
             continue;
         }
         char kind[64] = {}, a[256] = {}, b[256] = {};
-        if (sscanf(line + 8, "%63s %255s %255s", kind, a, b) < 2) {
+        int bAt = 0;
+        if (sscanf(line + 8, "%63s %255s %n", kind, a, &bAt) < 2) {
             continue;
+        }
+        // the rest of the line (update-file's text may hold spaces)
+        snprintf(b, sizeof(b), "%s", bAt > 0 ? line + 8 + bAt : "");
+        for (size_t n = strlen(b); n > 0 && (b[n - 1] == '\n' || b[n - 1] == '\r' || b[n - 1] == ' '); n--) {
+            b[n - 1] = '\0';
         }
         if (strcmp(kind, "end") == 0) {
             sSmoke.endFrame = (unsigned int)atoi(a);
@@ -1789,11 +2212,48 @@ void smokeFrame(unsigned int frame) {
                 }
                 p = *end == ',' ? end + 1 : end;
             }
+        } else if (e.kind == "update") {
+            // pc_update.h's state by name: available, installed, install-failed, up-to-date, ...
+            static const char* const kNames[] = {"idle",        "disabled",   "checking",  "up-to-date",
+                                                 "available",   "check-failed", "downloading", "installing",
+                                                 "installed",   "install-failed"};
+            PcUpdateInfo info;
+            pc_update_get_info(&info);
+            const char* name = (unsigned)info.status < sizeof(kNames) / sizeof(kNames[0]) ? kNames[info.status] : "?";
+            if (e.a != name) {
+                smokeError("update %s, expected %s", std::string(name) + " (" + info.detail + ")", e.a);
+            } else {
+                writef(STDERR_FILENO, "[cos] options-menu: ok update %s %s\n", name, info.latest);
+            }
+        } else if (e.kind == "update-file") {
+            // a file of the install directory (COS_UPDATE_DIR) whose text starts with this ("-": absent)
+            const char* dir = getenv("COS_UPDATE_DIR");
+            const std::string path = std::string(dir != nullptr ? dir : "") + "/" + e.a;
+            std::string text;
+            bool present = false;
+            if (FILE* f = fopen(path.c_str(), "rb")) {
+                present = true;
+                char buf[256];
+                size_t n;
+                while ((n = fread(buf, 1, sizeof(buf), f)) > 0) {
+                    text.append(buf, n);
+                }
+                fclose(f);
+            }
+            while (!text.empty() && (text.back() == '\n' || text.back() == '\r')) {
+                text.pop_back();
+            }
+            const bool ok = e.b == "-" ? !present : present && text.rfind(e.b, 0) == 0;
+            if (!ok) {
+                smokeError("update file %s, expected %s", e.a + (present ? " = " + text : " absent"), e.b);
+            } else {
+                writef(STDERR_FILENO, "[cos] options-menu: ok update file %s %s\n", e.a.c_str(), e.b.c_str());
+            }
         } else {
             smokeError("unknown #expect %s%s", e.kind);
         }
     }
-    if (sSmoke.pausedChecks == 0 && m.opened > 0) {
+    if (sSmoke.pausedChecks == 0 && m.opened > 0 && !sSmoke.title) {
         smokeError("no frame with the menu open in the PLAY scene was checked%s%s", "");
     }
     writef(STDERR_FILENO, "[cos] options-menu: %s at frame %u (%u errors, %u paused frames checked)\n",
@@ -1871,7 +2331,16 @@ void menuFrame() {
     // for the game (pad-echo).
     const uint32_t keys = (sSmoke.on ? readScript() : 0) | readGamepads() | readKeyboard();
     captureFrame();
-    handleInput(keys);
+    updateFrame();
+    if (m.popup) {
+        popupInput(keys);
+    } else {
+        handleInput(keys);
+    }
+    drawNotice();
+    if (m.popup) {
+        drawPopup();
+    }
     if (!m.open) {
         return;
     }

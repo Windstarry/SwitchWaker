@@ -480,6 +480,15 @@ void runCheck(bool atStart, const std::string& skipTag) {
         publish(PC_UPDATE_CHECK_FAILED, PC_UPDATE_ERR_SERVER, "not a release: " + why);
         return;
     }
+    if (f.url.rfind("file://", 0) == 0) {
+        // test fixtures (native/check/update): asset URLs without a scheme are files next to the answer
+        const std::string base = f.url.substr(0, f.url.rfind('/') + 1);
+        for (Asset& a : rel.assets) {
+            if (a.url.find("://") == std::string::npos) {
+                a.url = base + a.url;
+            }
+        }
+    }
     const bool newer = isNewer(latest, cur);
     std::string failedTag;
     if (std::string dir = installDir(); !dir.empty()) {

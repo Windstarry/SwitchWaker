@@ -6,7 +6,7 @@
 #
 #   1. builds every check target of build/native-mac (of the worktree this script lives in), or
 #      of $COS_BUILD_DIR (e.g. build/native-linux);
-#   2. runs the static checks: cos_sdk_smoke, cos_pc_tests, the link census against
+#   2. runs the static checks: cos_sdk_smoke, cos_pc_tests, cos_update_tests, the link census against
 #      native/check/expected_unresolved_phase2.txt and symbol_census --all --dups (both on the
 #      Mac only: they read Mach-O objects), the phase 4 inventory against
 #      native/check/phase4_baseline.txt;
@@ -58,7 +58,7 @@ census_target=""
 
 if [ "$do_build" = 1 ]; then
     # shellcheck disable=SC2086
-    if ninja -C "$build" all switchwaker cos_sdk_smoke cos_pc_tests cos_layout_check cos_sdk_shadow_check \
+    if ninja -C "$build" all switchwaker cos_sdk_smoke cos_pc_tests cos_update_tests cos_layout_check cos_sdk_shadow_check \
         $census_target > "$out/build.log" 2>&1; then
         report build ok ""
     else
@@ -74,6 +74,7 @@ check() { # name command...
 }
 check sdk_smoke "$build/cos_sdk_smoke"
 check pc_tests "$build/cos_pc_tests"
+check update_tests "$build/cos_update_tests"
 if [ "$census" = 1 ]; then
     check link_census diff -u "$repo/native/check/expected_unresolved_phase2.txt" \
         "$build/link_census_unresolved.txt"
