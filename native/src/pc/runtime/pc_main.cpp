@@ -230,7 +230,7 @@ void pc_aurora_init(int argc, char* argv[]) {
     config.vsync = !gConfig.uncapped;
     config.windowPosX = -1;
     config.windowPosY = -1;
-    // 960x720, or as wide as COS_ASPECT at that height (1280x720 at 16:9, 1152x720 at 16:10).
+    // 960x720, or as wide as COS_ASPECT at that height (1280x720 at 16:9).
     config.windowWidth = (int)(480 * 3 / 2 * pc_aspect_ratio() + 0.5f);
     config.windowHeight = 480 * 3 / 2;
     // COS_FULLSCREEN=1: open fullscreen (borderless at the desktop's resolution). F11 or Alt+Enter

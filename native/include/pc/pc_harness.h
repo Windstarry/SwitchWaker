@@ -21,7 +21,7 @@
  *   COS_BOOT_PRESET sailing: a story preset on the debug boot's new file (pc_preset.cpp)
  *   COS_PERF_EVERY every this many frames, one line of game-thread frame times (pc_frame.cpp)
  *   COS_PERF       file that gets one CSV row of game-thread times per game frame (step 6.7)
- *   COS_ASPECT     4:3 (default), 16:9 or 16:10: the widescreen option (pc_aspect.h)
+ *   COS_ASPECT     4:3 (default) or 16:9: the widescreen option (pc_aspect.h)
  *
  * Exit codes: see PC_EXIT_* below.
  */
