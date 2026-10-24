@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // The deko3d renderer's C entry points (docs/DEKO3D_MIGRATION_PLAN.md, phases 2-3). The deko3d NRO
 // (COS_SWITCH_RENDERER=deko3d) builds Aurora with AURORA_GFX_DEKO3D: Aurora records every frame as
 // for WebGPU, Dawn's Null device keeps its object model without GPU work, and switch/deko owns the

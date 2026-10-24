@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #pragma once
 // What the encoder (dk_encode.cpp) shares with the present and the readback (dk_present.cpp): the
 // fixed passes (a full-target draw with one of the cache's fixed shaders), the state cache's reset,

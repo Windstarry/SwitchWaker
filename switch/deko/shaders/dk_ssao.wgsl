@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // Light screen-space ambient occlusion of the present pass (switch/deko/aurora/dk_present.cpp; options menu:
 // Gráficos > Oclusión ambiental, COS_SSAO). Three fixed shaders of this file, all one full-screen triangle:
 //

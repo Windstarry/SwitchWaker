@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // Aurora's recorded frame to deko3d commands (dk_gfx.hpp; docs/DEKO3D_MIGRATION_PLAN.md phase 3), on
 // the render worker: the work encoding.cpp gives Dawn, op by op as Aurora seals them.
 //

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // The shadows of Aurora's WebGPU textures, views, samplers and bind groups (dk_objects.hpp;
 // docs/DEKO3D_MIGRATION_PLAN.md phase 3). The __wrap_ functions below take the place of Dawn's for
 // every caller in the NRO (switch/native/CMakeLists.txt: -Wl,--wrap=wgpuDeviceCreateTexture ...):

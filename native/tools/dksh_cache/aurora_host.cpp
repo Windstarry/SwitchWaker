@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // The Aurora side of dksh_cache: GX pipeline configs from the pipeline cache database to WGSL
 // modules, with what gx/shader.cpp and gx/shader_info.cpp need from the rest of Aurora replaced by
 // host stand-ins (logging to stderr, no census, no device).

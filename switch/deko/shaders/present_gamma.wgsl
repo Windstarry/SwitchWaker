@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // The present pass's picture with the options menu's gamma (Gráficos > Gamma; dk_present.cpp): Aurora's
 // xfb_copy (webgpu/gpu.cpp create_copy_pipeline, fs_opaque) plus colour^exponent, the one place the
 // output is finalized. The game's colours reach the swapchain as they are (RGBA8 Unorm, no sRGB

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 // The present and the readback of the deko3d NRO's Aurora side (dk_gfx.hpp; docs/DEKO3D_MIGRATION_PLAN.md
 // phase 3).
 //
