@@ -257,6 +257,10 @@ void pc_aurora_init(int argc, char* argv[]) {
     });
 #endif
     applyFrameBufferScale(info.windowSize);
+    // Issue #31: Aurora's policy is FIT, but its window starts with the aspect fit off until a
+    // policy is set, so the framebuffer took the whole window and 4:3 was stretched on a 16:9
+    // screen (the Switch, a fullscreen Mac). Setting FIT turns the fit on (pillarbox at 4:3).
+    AuroraSetViewportPolicy(AURORA_VIEWPORT_FIT);
     if (pc_aspect_wide()) {
         // The game draws an anamorphic picture into the 640x480 EFB (pc_aspect.h): Aurora presents
         // it at the wider aspect, letterboxed or pillarboxed in a window of another shape (patch
