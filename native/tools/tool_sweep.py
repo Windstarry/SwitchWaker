@@ -177,6 +177,17 @@ CASES = {
                                [runs_proc(PROC_HOOKSHOT_FLY), reaches(500, -2400, 150)],
                                {"stage": "K_Teste:0:0", "place": "500,0,-1500,180",
                                 "env": {"COS_AIM_INVERT_Y": "1"}}),
+    # Issue #25: aimed with the gyroscope alone (COS_GYRO_FAKE: 10 degrees up over the view's first
+    # 15 frames; the option off, a turn down or no turn left misses), and placed 20 degrees to the
+    # left of the target, turned 20 degrees right as well.
+    "hookshot-target-gyro": ("2F,38", "tool-hookshot-target-gyro.txt",
+                             [runs_proc(PROC_HOOKSHOT_FLY), reaches(500, -2400, 150)],
+                             {"stage": "K_Teste:0:0", "place": "500,0,-1500,180",
+                              "env": {"COS_AIM_GYRO": "1", "COS_GYRO_FAKE": "0,20,15"}}),
+    "hookshot-target-gyro-yaw": ("2F,38", "tool-hookshot-target-gyro.txt",
+                                 [runs_proc(PROC_HOOKSHOT_FLY), reaches(500, -2400, 150)],
+                                 {"stage": "K_Teste:0:0", "place": "500,0,-1500,200",
+                                  "env": {"COS_AIM_GYRO": "1", "COS_GYRO_FAKE": "-40,20,15"}}),
     "red-potion": ("50,51,38", ITEMS, [runs_proc(PROC_BOTTLE_DRINK)]),
     "empty-bottle": ("50,38", ITEMS, [runs_proc(PROC_BOTTLE_SWING)]),
 }

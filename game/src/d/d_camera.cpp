@@ -91,6 +91,24 @@ static void dCamera_aimStick(int padId, bool zoom, f32* x, f32* y) {
         *y = -*y;
     }
 }
+
+// Issue #25: the gyroscope's turn since the last frame (pc_controls.h), in the view's own units:
+// *yaw in degrees to the left, added to the body's yaw; the pitch into m388 (fVar1 degrees per
+// unit, positive down), where the game's limits hold it. `pitchDownBlocked`: the eye is at the
+// floor and m388 already points down, as when the main stick may not tilt further.
+static f32 dCamera_aimGyro(int padId, f32 degPerUnit, bool pitchDownBlocked, bool noPitch, f32* m388) {
+    f32 yaw, pitch;
+    if (!pc_aim_gyro_turn(padId, &yaw, &pitch)) {
+        return 0.0f;
+    }
+    if (!noPitch && degPerUnit > 0.0f) {
+        const f32 add = -pitch / degPerUnit;
+        if (!(pitchDownBlocked && add > 0.0f)) {
+            *m388 = dCamera_aimClamp(*m388 + add);
+        }
+    }
+    return yaw;
+}
 #undef CPad_GET_SUBSTICK_POS_X
 #undef CPad_GET_SUBSTICK_POS_Y
 #define CPad_GET_SUBSTICK_POS_X(padNo) dCamera_cStickX(padNo)
@@ -4674,6 +4692,10 @@ bool dCamera_c::CalcSubjectAngle(s16* param_1, s16* param_2) {
 #endif
 
     bool bVar9 = true;
+#if TARGET_PC
+    f32 gyroYaw = 0.0f;  // issue #25
+    bool gyroDownBlocked = false;
+#endif
     
     if (dComIfGp_evmng_cameraPlay() && dComIfGp_getMiniGameType() != 8) {
         return false;
@@ -4751,6 +4773,9 @@ bool dCamera_c::CalcSubjectAngle(s16* param_1, s16* param_2) {
 
     f32 f2 = 5.0f;
     f32 eyeY = mEye.y;
+#if TARGET_PC
+    gyroDownBlocked = (eyeY <= m354 + f2 || eyeY <= mBG.m5C.m58 + f2) && mWork.subject.m388 >= 0.0f;
+#endif
     if ((eyeY <= m354 + f2 || eyeY <= mBG.m5C.m58 + f2) && ((mWork.subject.m388 >= 0.0f && f3 > 0.0f) || (mWork.subject.m388 < 0.0f && f3 <= 0.0f))) {
 #endif
         fVar5 = 0.0f;
@@ -4795,6 +4820,10 @@ bool dCamera_c::CalcSubjectAngle(s16* param_1, s16* param_2) {
             if (mWork.subject.m388 < -1.0f) {
                 mWork.subject.m388 = -1.0f;
             }
+#if TARGET_PC
+            gyroYaw = dCamera_aimGyro(mPadId, fVar1, gyroDownBlocked,
+                                      check_owner_action(mPadId, daPyStts0_CRAWL_e), &mWork.subject.m388);
+#endif
         }
     }
     else {
@@ -4805,6 +4834,9 @@ bool dCamera_c::CalcSubjectAngle(s16* param_1, s16* param_2) {
     cSAngle local_94(fVar1 * mWork.subject.m388);
     
     s16 local_a8 = local_90.Val() + mWork.subject.m3BA;
+#if TARGET_PC
+    local_a8 += cSAngle(gyroYaw).Val();
+#endif
     *param_2 = local_a8;
     *param_1 = local_94.Val();
     mWork.subject.m37D = 0;
@@ -4830,6 +4862,7 @@ bool dCamera_c::subjectCamera(s32 param_1) {
     if (m108 == 0) {
 #if TARGET_PC
         dCamera_aimLatch[mPadId & 3] = false;
+        pc_aim_gyro_reset();
 #endif
         mWork.subject.m378 = 'SUBJ';
         mWork.subject.m37C = 0;
