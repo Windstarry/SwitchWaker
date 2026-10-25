@@ -96,6 +96,9 @@ telescope-demo 0 --stage sea:44:206 --input native/check/input/telescope-demo.tx
 # Issue #23: with the C stick aiming (Controles > "Apuntar con el stick derecho"), its up/down still
 # zooms the telescope (the x9 zoom that locks the view on Quill)
 telescope-demo 0 --stage sea:44:206 --input native/check/input/telescope-demo.txt --aspect 16:9 --env COS_AIM_RIGHT_STICK=1
+# The camera's vertical axis inverted (Controles > "Invertir cámara vertical") tilts the camera only: the
+# C stick up still zooms the telescope in (it zoomed out, and the view never locked on Quill)
+telescope-demo 0 --stage sea:44:206 --input native/check/input/telescope-demo.txt --aspect 16:9 --env COS_CAMERA_INVERT_Y=1
 # bug B7 (lane b7-shore): Outset's shore foam and sea shadow decals (room model1.bdl, about one unit
 # above the island's water) with a fixed camera moving over the cliffs under the rope bridge: no
 # frame may lose the foam against its neighbours (the Switch's GL depth precision flicker)

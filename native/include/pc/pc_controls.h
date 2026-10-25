@@ -10,7 +10,9 @@
  *
  * Applied only where the camera reads the C stick (d_camera.cpp, dCamera_cStickX/Y): the wind
  * baton's left hand, the item menu's songs, the grappling hook and the figure viewer keep the C
- * stick's real directions. Options menu: Controles > "Invertir cámara horizontal" and "Invertir
+ * stick's real directions; so do the camera's own C stick commands (dCamera_cStickYCmd: up enters
+ * the look-around view, down ends it, up/down zoom the telescope and the Picto Box), only the
+ * camera's turns and tilts are inverted. Options menu: Controles > "Invertir cámara horizontal" and "Invertir
  * cámara vertical", live. Aiming: every first-person view (the bow, the hookshot, the boomerang,
  * the grappling hook's throw, the telescope, the Picto Box, looking around) turns through
  * dCamera_c::CalcSubjectAngle, which reads the main stick; with COS_AIM_RIGHT_STICK the C stick's

@@ -61,6 +61,11 @@ static inline f32 dCamera_cStickY(int padId) {
     return CPad_GET_SUBSTICK_POS_Y(padId);
 }
 
+// The C stick's vertical axis as a command, not a camera tilt: up enters the look-around view,
+// down ends it, up/down zoom the telescope and the Picto Box. These keep the stick's real
+// direction with the camera's vertical axis inverted (mStickCPosYLast holds the inverted one).
+#define dCamera_cStickYCmd(y) (pc_camera_invert_y() ? -(y) : (y))
+
 // Issue #23: aiming (CalcSubjectAngle, every first-person view) with the C stick too, and its
 // vertical axis inverted (pc_controls.h). The C stick's real position, added to the main stick's
 // once it has been centred since the view opened (dCamera_aimLatch, cleared by subjectCamera's
@@ -90,6 +95,8 @@ static void dCamera_aimStick(int padId, bool zoom, f32* x, f32* y) {
 #undef CPad_GET_SUBSTICK_POS_Y
 #define CPad_GET_SUBSTICK_POS_X(padNo) dCamera_cStickX(padNo)
 #define CPad_GET_SUBSTICK_POS_Y(padNo) dCamera_cStickY(padNo)
+#else
+#define dCamera_cStickYCmd(y) (y)
 #endif
 
 namespace {  
@@ -1287,7 +1294,7 @@ int dCamera_c::nextMode(s32 i_curMode) {
                     m144 = 1;
                     m184 = 0;
                 }
-                else if (mStickCPosYLast <= 0.0f && mStickCValueLast > mCamSetup.CStickReleaseThreshold()) {
+                else if (dCamera_cStickYCmd(mStickCPosYLast) <= 0.0f && mStickCValueLast > mCamSetup.CStickReleaseThreshold()) {
                     m144 = 0;
                 }
                 else if (i_curMode == 0 || i_curMode == 0x13) {
@@ -1304,11 +1311,11 @@ int dCamera_c::nextMode(s32 i_curMode) {
                         )
                     ) {
                         if (m184 == 1) {
-                            if (mStickCPosYLast < mCamSetup.mCstick.SwTHL()) {
+                            if (dCamera_cStickYCmd(mStickCPosYLast) < mCamSetup.mCstick.SwTHL()) {
                                 m184 = 0;
                             }
                         }
-                        else if (mStickCPosYLast > mCamSetup.mCstick.SwTHH()) {
+                        else if (dCamera_cStickYCmd(mStickCPosYLast) > mCamSetup.mCstick.SwTHH()) {
                             // C-stick up.
                             setComStat(dCamAttnStts_00001000_e);
                             m184 = 1;
@@ -4849,7 +4856,7 @@ bool dCamera_c::subjectCamera(s32 param_1) {
             mWork.subject.m3BD = 0;
         }
 
-        if (mStickCPosYLast < -0.74f) {
+        if (dCamera_cStickYCmd(mStickCPosYLast) < -0.74f) {
             mWork.subject.m3C4 = 2;
         } else {
             mWork.subject.m3C4 = 0;
@@ -5094,10 +5101,10 @@ bool dCamera_c::subjectCamera(s32 param_1) {
         // zoom control block
         f32 a = 0.0f;
         f32 b = 0.0f;
-        if (mStickCPosYLast > 0.0f) {
-            a = dCamMath::rationalBezierRatio(mStickCPosYLast, mCamSetup.CurveWeight());
+        if (dCamera_cStickYCmd(mStickCPosYLast) > 0.0f) {
+            a = dCamMath::rationalBezierRatio(dCamera_cStickYCmd(mStickCPosYLast), mCamSetup.CurveWeight());
         } else {
-            b = dCamMath::rationalBezierRatio(-mStickCPosYLast, mCamSetup.CurveWeight());
+            b = dCamMath::rationalBezierRatio(-dCamera_cStickYCmd(mStickCPosYLast), mCamSetup.CurveWeight());
         }
 
         f32 next = mWork.subject.m38C + p26 * (a - b) * 0.1f;
@@ -5148,15 +5155,15 @@ bool dCamera_c::subjectCamera(s32 param_1) {
     if (check_owner_action(mPadId, daPyStts0_SUBJECT_e)) {
 #endif
         if (mWork.subject.m3C4 == 2) {
-            if (mStickCPosYLast >= -0.001f) {
+            if (dCamera_cStickYCmd(mStickCPosYLast) >= -0.001f) {
                 mWork.subject.m3C4 = 0;
             }
         }
-        else if (mWork.subject.m3C4 == 1 && mStickCPosYLast < -0.74f) {
+        else if (mWork.subject.m3C4 == 1 && dCamera_cStickYCmd(mStickCPosYLast) < -0.74f) {
             mWork.subject.m3C4 = 2;
             setComStat(dCamAttnStts_00002000_e);
         }
-        else if (mStickCPosYLast < -0.001f) {
+        else if (dCamera_cStickYCmd(mStickCPosYLast) < -0.001f) {
             mWork.subject.m3C4 = 1;
         }
         else {
