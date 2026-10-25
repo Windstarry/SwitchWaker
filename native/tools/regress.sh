@@ -113,7 +113,8 @@ fi
 run_one() { # line
     local target expect opts rc
     read -r target expect opts <<< "$1"
-    local log="$out/run-$target-$(echo "$opts" | tr -c 'a-z0-9' '_').log"
+    # Upper case kept: --env COS_AIM_RIGHT_STICK=1 and --env COS_CAMERA_INVERT_Y=1 shared a log.
+    local log="$out/run-$target-$(echo "$opts" | tr -c 'a-zA-Z0-9' '_').log"
     if [ "$target" = no-disc ]; then
         COS_DISC=/nonexistent "$build/switchwaker" > "$log" 2>&1
         rc=$?
