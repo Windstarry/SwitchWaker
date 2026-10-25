@@ -630,11 +630,13 @@ const PcSettingDesc kBuiltins[] = {
     // Issue #25 (pc_controls.h, pc_gyro.cpp).
     {"COS_AIM_GYRO", "Apuntar con giroscopio",
      "Al apuntar (arco, gancho, bumerán, catalejo, cámara, primera persona), girar e inclinar el mando o la "
-     "consola mueve la vista. Los sticks siguen funcionando.",
+     "consola mueve la vista, siempre en su sentido natural (las opciones de invertir no le afectan). Los "
+     "sticks siguen funcionando.",
      PC_SETTING_TAB_CONTROLS, 0, CHOICES(kOnOff), "0", applyAimGyro, nullptr, 5,
      "Gyro aiming",
      "When aiming (bow, hookshot, boomerang, telescope, Picto Box, first person), turning and tilting the "
-     "controller or the console moves the view. The sticks still work."},
+     "controller or the console moves the view, always in its natural direction (the invert options do not "
+     "change it). The sticks still work."},
     {"COS_AIM_GYRO_SENS", "Sensibilidad del giroscopio",
      "Cuánto gira la vista por cada grado que gira el mando. x1: lo mismo.",
      PC_SETTING_TAB_CONTROLS, 0, CHOICES(kGyroSens), "1", applyAimGyroSens, nullptr, 6,
