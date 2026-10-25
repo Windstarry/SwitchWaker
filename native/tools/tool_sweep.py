@@ -168,6 +168,15 @@ CASES = {
     "hookshot-target": ("2F,38", "tool-hookshot-target.txt",
                         [runs_proc(PROC_HOOKSHOT_FLY), reaches(500, -2400, 150)],
                         {"stage": "K_Teste:0:0", "place": "500,0,-1500,180"}),
+    # Issue #23: the same aimed with the C stick (pc_controls.h), and with aiming's vertical axis inverted.
+    "hookshot-target-cstick": ("2F,38", "tool-hookshot-target-cstick.txt",
+                               [runs_proc(PROC_HOOKSHOT_FLY), reaches(500, -2400, 150)],
+                               {"stage": "K_Teste:0:0", "place": "500,0,-1500,180",
+                                "env": {"COS_AIM_RIGHT_STICK": "1"}}),
+    "hookshot-target-invert": ("2F,38", "tool-hookshot-target-invert.txt",
+                               [runs_proc(PROC_HOOKSHOT_FLY), reaches(500, -2400, 150)],
+                               {"stage": "K_Teste:0:0", "place": "500,0,-1500,180",
+                                "env": {"COS_AIM_INVERT_Y": "1"}}),
     "red-potion": ("50,51,38", ITEMS, [runs_proc(PROC_BOTTLE_DRINK)]),
     "empty-bottle": ("50,38", ITEMS, [runs_proc(PROC_BOTTLE_SWING)]),
 }
@@ -181,6 +190,7 @@ def run_case(name: str, out: str, disc: str | None) -> tuple[str, bool, list[str
     env = dict(os.environ, COS_TOOL_WATCH="1", COS_BOOT_ITEMS=items)
     if "place" in opts:
         env["COS_TOOL_PLACE"] = opts["place"]
+    env.update(opts.get("env", {}))
     cmd = [COS_RUN, "run", "--uncapped", "--frames", "1500", "--stage", opts.get("stage", "sea:44:0"),
            "--input", f"{INPUT}/{script}", "--shot", SHOTS, "--run-dir", run_dir, "--quiet"]
     if disc:

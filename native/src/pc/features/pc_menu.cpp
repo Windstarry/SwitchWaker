@@ -440,6 +440,8 @@ void applyDof(const char*, const char* v, void*) { pc_dof_set(strcmp(v, "0") != 
 void applyAniso(const char*, const char* v, void*) { pc_aniso_set(atoi(v)); }
 void applyCameraInvertX(const char*, const char* v, void*) { pc_camera_invert_x_set(strcmp(v, "1") == 0); }
 void applyCameraInvertY(const char*, const char* v, void*) { pc_camera_invert_y_set(strcmp(v, "1") == 0); }
+void applyAimRightStick(const char*, const char* v, void*) { pc_aim_right_stick_set(strcmp(v, "1") == 0); }
+void applyAimInvertY(const char*, const char* v, void*) { pc_aim_invert_y_set(strcmp(v, "1") == 0); }
 void applyCameraShake(const char*, const char* v, void*) { pc_camera_shake_set(strcmp(v, "1") == 0); }
 void applyHeatHaze(const char*, const char* v, void*) { pc_heat_haze_set(strcmp(v, "1") == 0); }
 void applyQol(const char* key, const char* v, void*) { pc_qol_set(key, v); }
@@ -601,14 +603,27 @@ const PcSettingDesc kBuiltins[] = {
      "the Switch's panel (~2.2) shows it brighter and washed out: +0.20 corrects it. This menu does not change."},
     {"COS_CAMERA_INVERT_X", "Invertir cámara horizontal",
      "El stick C gira la cámara al revés en horizontal.",
-     PC_SETTING_TAB_GRAPHICS, 0, CHOICES(kOnOff), "0", applyCameraInvertX, nullptr, 90,
+     PC_SETTING_TAB_CONTROLS, 0, CHOICES(kOnOff), "0", applyCameraInvertX, nullptr, 1,
      "Invert camera horizontally",
      "The C stick turns the camera the other way horizontally."},
     {"COS_CAMERA_INVERT_Y", "Invertir cámara vertical",
      "El stick C inclina la cámara al revés en vertical.",
-     PC_SETTING_TAB_GRAPHICS, 0, CHOICES(kOnOff), "0", applyCameraInvertY, nullptr, 91,
+     PC_SETTING_TAB_CONTROLS, 0, CHOICES(kOnOff), "0", applyCameraInvertY, nullptr, 2,
      "Invert camera vertically",
      "The C stick tilts the camera the other way vertically."},
+    // Issue #23 (pc_controls.h): the button remap rows follow (orders 10-120).
+    {"COS_AIM_RIGHT_STICK", "Apuntar con el stick derecho",
+     "El stick C también apunta el arco, el gancho, el bumerán, el catalejo, la cámara y la vista en primera "
+     "persona. En el catalejo y la cámara, arriba y abajo siguen haciendo zoom.",
+     PC_SETTING_TAB_CONTROLS, 0, CHOICES(kOnOff), "0", applyAimRightStick, nullptr, 3,
+     "Aim with the right stick",
+     "The C stick also aims the bow, the hookshot, the boomerang, the telescope, the Picto Box and the "
+     "first-person view. In the telescope and the Picto Box, up and down still zoom."},
+    {"COS_AIM_INVERT_Y", "Invertir apuntado vertical",
+     "Al apuntar, arriba apunta hacia arriba (en la GameCube, hacia abajo). Vale para los dos sticks.",
+     PC_SETTING_TAB_CONTROLS, 0, CHOICES(kOnOff), "0", applyAimInvertY, nullptr, 4,
+     "Invert aiming vertically",
+     "When aiming, up aims up (on the GameCube, down). Applies to both sticks."},
     {"COS_CAMERA_SHAKE", "Temblor de cámara",
      "La cámara tiembla con terremotos, golpes, explosiones y cinemáticas, como en la GameCube. La vibración "
      "del mando no cambia.",

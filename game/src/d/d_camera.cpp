@@ -60,6 +60,32 @@ static inline f32 dCamera_cStickY(int padId) {
     }
     return CPad_GET_SUBSTICK_POS_Y(padId);
 }
+
+// Issue #23: aiming (CalcSubjectAngle, every first-person view) with the C stick too, and its
+// vertical axis inverted (pc_controls.h). The C stick's real position, added to the main stick's
+// once it has been centred since the view opened (dCamera_aimLatch, cleared by subjectCamera's
+// set-up); with `zoom` (the telescope, the Picto Box) its vertical axis stays the zoom's.
+static bool dCamera_aimLatch[4];
+
+static inline f32 dCamera_aimClamp(f32 v) {
+    return v > 1.0f ? 1.0f : v < -1.0f ? -1.0f : v;
+}
+
+static void dCamera_aimStick(int padId, bool zoom, f32* x, f32* y) {
+    if (pc_aim_right_stick()) {
+        const f32 cx = CPad_GET_SUBSTICK_POS_X(padId);
+        const f32 cy = zoom ? 0.0f : CPad_GET_SUBSTICK_POS_Y(padId);
+        if (!dCamera_aimLatch[padId & 3]) {
+            dCamera_aimLatch[padId & 3] = CPad_GET_SUBSTICK_VALUE(padId) < 0.1f;
+        } else {
+            *x = dCamera_aimClamp(*x + cx);
+            *y = dCamera_aimClamp(*y + cy);
+        }
+    }
+    if (pc_aim_invert_y()) {
+        *y = -*y;
+    }
+}
 #undef CPad_GET_SUBSTICK_POS_X
 #undef CPad_GET_SUBSTICK_POS_Y
 #define CPad_GET_SUBSTICK_POS_X(padNo) dCamera_cStickX(padNo)
@@ -4673,6 +4699,9 @@ bool dCamera_c::CalcSubjectAngle(s16* param_1, s16* param_2) {
     
     fVar6 = CPad_GET_STICK_POS_X(mPadId);
     fVar5 = CPad_GET_STICK_POS_Y(mPadId);
+#if TARGET_PC
+    dCamera_aimStick(mPadId, mCamParam.Flag(mWork.subject.m380, dCamPrmFlg_UNK010), &fVar6, &fVar5);
+#endif
 
     if (is_player(mpPlayerActor)) {
         mWork.subject.m3B8 = ((daPy_py_c*)mpPlayerActor)->getBodyAngleX();
@@ -4792,6 +4821,9 @@ bool dCamera_c::subjectCamera(s32 param_1) {
     cSGlobe desired;
 
     if (m108 == 0) {
+#if TARGET_PC
+        dCamera_aimLatch[mPadId & 3] = false;
+#endif
         mWork.subject.m378 = 'SUBJ';
         mWork.subject.m37C = 0;
         mWork.subject.m37D = 1;
@@ -5109,7 +5141,12 @@ bool dCamera_c::subjectCamera(s32 param_1) {
     mWork.subject.m37D = 1;
 
     // "C-stick down" behavior block
+#if TARGET_PC
+    // Issue #23: with the C stick aiming, its down no longer ends the look-around view.
+    if (check_owner_action(mPadId, daPyStts0_SUBJECT_e) && !pc_aim_right_stick()) {
+#else
     if (check_owner_action(mPadId, daPyStts0_SUBJECT_e)) {
+#endif
         if (mWork.subject.m3C4 == 2) {
             if (mStickCPosYLast >= -0.001f) {
                 mWork.subject.m3C4 = 0;
