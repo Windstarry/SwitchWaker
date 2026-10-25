@@ -22,7 +22,7 @@
 //   8. restore: pc_button_remap_restore_defaults leaves no COS_PAD_ line in the file; East gives B.
 // Then the options menu (pc_menu.cpp), driven by the same Pro Controller (SDL's labels are the
 // Switch's: East = A, South = B): ZL+ZR+Minus opens it, R moves to Controles, D-pad Down past the
-// camera and aiming rows above the remap (kRowsAbove, issue #23) to the A row, and:
+// camera and aiming rows above the remap (kRowsAbove, issues #23 and #25) to the A row, and:
 //   9. confirm not captured: East (confirm) held 30 frames opens the capture of A and is not taken;
 //      West then gives A the Y button (A = y), and X takes A's old input (b);
 //  10. capture swallows navigation: on row B, confirm, then D-pad Down: B = down (Down takes B's old
@@ -309,9 +309,10 @@ constexpr size_t kStepCount = sizeof(kSteps) / sizeof(kSteps[0]);
 
 remap::Map sSnapshot; // the map before a capture that must change nothing
 
-// The Controles rows above the remap's (pc_menu.cpp, issue #23): the camera's inverted axes, aiming
-// with the right stick and its inverted vertical axis. menuOpened checks the count.
-constexpr int kRowsAbove = 4;
+// The Controles rows above the remap's (pc_menu.cpp, issues #23 and #25): the camera's inverted axes,
+// aiming with the right stick and its inverted vertical axis, the gyroscope and its sensitivity.
+// menuOpened checks the count.
+constexpr int kRowsAbove = 6;
 constexpr int kRowA = kRowsAbove;
 constexpr int kRowB = kRowsAbove + 1;
 constexpr int kRowRestore = kRowsAbove + (int)remap::Action::Count;
@@ -462,6 +463,8 @@ const MenuOp kMenuOps[] = {
     {"confirm not captured", nullptr, SDL_GAMEPAD_BUTTON_DPAD_DOWN, false, 4, 8, nullptr, false},
     {"confirm not captured", nullptr, SDL_GAMEPAD_BUTTON_DPAD_DOWN, false, 4, 8, nullptr, false},
     {"confirm not captured", nullptr, SDL_GAMEPAD_BUTTON_DPAD_DOWN, false, 4, 8, nullptr, false},
+    {"confirm not captured", nullptr, SDL_GAMEPAD_BUTTON_DPAD_DOWN, false, 4, 8, nullptr, false},
+    {"confirm not captured", nullptr, SDL_GAMEPAD_BUTTON_DPAD_DOWN, false, 4, 8, nullptr, false},
     {"confirm not captured", nullptr, SDL_GAMEPAD_BUTTON_DPAD_DOWN, false, 4, 8, onRowA, false},
     {"confirm not captured", nullptr, SDL_GAMEPAD_BUTTON_EAST, false, 30, 8, capturingA, false},
     {"confirm not captured", nullptr, SDL_GAMEPAD_BUTTON_WEST, false, 4, 8, confirmNotCaptured, true},
@@ -473,6 +476,8 @@ const MenuOp kMenuOps[] = {
     {"cancel timeout", snapshot, SDL_GAMEPAD_BUTTON_EAST, false, 4, 8, unchanged, true, true},
     {"other pads ignored", holdAdapterStart, SDL_GAMEPAD_BUTTON_EAST, false, 4, 8, capturingB, false},
     {"other pads ignored", nullptr, SDL_GAMEPAD_BUTTON_NORTH, false, 4, 8, otherPadsIgnored, true},
+    {"restore row", nullptr, SDL_GAMEPAD_BUTTON_DPAD_UP, false, 4, 8, nullptr, false},
+    {"restore row", nullptr, SDL_GAMEPAD_BUTTON_DPAD_UP, false, 4, 8, nullptr, false},
     {"restore row", nullptr, SDL_GAMEPAD_BUTTON_DPAD_UP, false, 4, 8, nullptr, false},
     {"restore row", nullptr, SDL_GAMEPAD_BUTTON_DPAD_UP, false, 4, 8, nullptr, false},
     {"restore row", nullptr, SDL_GAMEPAD_BUTTON_DPAD_UP, false, 4, 8, nullptr, false},

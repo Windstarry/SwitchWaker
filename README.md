@@ -301,6 +301,10 @@ The previous renderer, OpenGL ES on Mesa (`switchwaker_gl.nro`, "SwitchWaker (GL
   hookshot, the boomerang, the telescope, the Picto Box, the first-person view) and invert aiming
   up/down (on the GameCube, up aims down). In the telescope and the Picto Box the right stick's
   up/down still zooms.
+- Gyro aiming, same tab (off by default): in the same views, turning and tilting the controller (a
+  Pro Controller, the Joy-Cons, the console held in handheld mode; on the Mac and Linux, any
+  controller SDL reads a gyroscope from) moves the view, with a sensitivity from x0.5 to x3. The
+  sticks still aim.
 - Language: the options menu and the shader loading screen are in Spanish or English, following the
   console's language (on the Mac and Linux, `LANG`); `COS_LANG=es` or `COS_LANG=en` forces one.
 - `COS_*` variables (environment on the Mac and Linux; on the Switch the options menu, and for

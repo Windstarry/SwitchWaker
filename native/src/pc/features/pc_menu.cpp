@@ -442,6 +442,8 @@ void applyCameraInvertX(const char*, const char* v, void*) { pc_camera_invert_x_
 void applyCameraInvertY(const char*, const char* v, void*) { pc_camera_invert_y_set(strcmp(v, "1") == 0); }
 void applyAimRightStick(const char*, const char* v, void*) { pc_aim_right_stick_set(strcmp(v, "1") == 0); }
 void applyAimInvertY(const char*, const char* v, void*) { pc_aim_invert_y_set(strcmp(v, "1") == 0); }
+void applyAimGyro(const char*, const char* v, void*) { pc_aim_gyro_set(strcmp(v, "1") == 0); }
+void applyAimGyroSens(const char*, const char* v, void*) { pc_aim_gyro_sens_set((float)atof(v)); }
 void applyCameraShake(const char*, const char* v, void*) { pc_camera_shake_set(strcmp(v, "1") == 0); }
 void applyHeatHaze(const char*, const char* v, void*) { pc_heat_haze_set(strcmp(v, "1") == 0); }
 void applyQol(const char* key, const char* v, void*) { pc_qol_set(key, v); }
@@ -505,6 +507,7 @@ const PcSettingChoice kFbScale[] = {
 };
 const PcSettingChoice kAspect[] = {{"16:9", "16:9 (panorámica)", "16:9 (widescreen)"}, {"4:3", "4:3 (GameCube)"}};
 const PcSettingChoice kOnOff[] = {{"0", "Desactivado", "Off"}, {"1", "Activado", "On"}};
+const PcSettingChoice kGyroSens[] = {{"0.5", "x0,5", "x0.5"}, {"1", "x1"}, {"1.5", "x1,5", "x1.5"}, {"2", "x2"}, {"3", "x3"}};
 const PcSettingChoice kAniso[] = {{"1", "x1 (desactivado)", "x1 (off)"}, {"2", "x2"}, {"4", "x4"}, {"8", "x8"}, {"16", "x16"}};
 const PcSettingChoice kFxaa[] = {{"0", "Desactivado", "Off"}, {"1", "Suave", "Soft"},
                                  {"2", "Normal", "Normal"}, {"3", "Fuerte", "Strong"}};
@@ -624,6 +627,19 @@ const PcSettingDesc kBuiltins[] = {
      PC_SETTING_TAB_CONTROLS, 0, CHOICES(kOnOff), "0", applyAimInvertY, nullptr, 4,
      "Invert aiming vertically",
      "When aiming, up aims up (on the GameCube, down). Applies to both sticks."},
+    // Issue #25 (pc_controls.h, pc_gyro.cpp).
+    {"COS_AIM_GYRO", "Apuntar con giroscopio",
+     "Al apuntar (arco, gancho, bumerán, catalejo, cámara, primera persona), girar e inclinar el mando o la "
+     "consola mueve la vista. Los sticks siguen funcionando.",
+     PC_SETTING_TAB_CONTROLS, 0, CHOICES(kOnOff), "0", applyAimGyro, nullptr, 5,
+     "Gyro aiming",
+     "When aiming (bow, hookshot, boomerang, telescope, Picto Box, first person), turning and tilting the "
+     "controller or the console moves the view. The sticks still work."},
+    {"COS_AIM_GYRO_SENS", "Sensibilidad del giroscopio",
+     "Cuánto gira la vista por cada grado que gira el mando. x1: lo mismo.",
+     PC_SETTING_TAB_CONTROLS, 0, CHOICES(kGyroSens), "1", applyAimGyroSens, nullptr, 6,
+     "Gyro sensitivity",
+     "How far the view turns for each degree the controller turns. x1: the same."},
     {"COS_CAMERA_SHAKE", "Temblor de cámara",
      "La cámara tiembla con terremotos, golpes, explosiones y cinemáticas, como en la GameCube. La vibración "
      "del mando no cambia.",
