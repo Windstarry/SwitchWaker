@@ -125,8 +125,10 @@ void sdl3_shim_gamepad_init(void) {
 
 // HOS reports the six-axis sensors with x right, y forward (away from the
 // player) and z out of the controller's face, the angular velocity in turns per
-// second and the acceleration in G; SDL has x right, y out of the face and z
-// towards the player, in rad/s and m/s^2.
+// second and the acceleration in G as gravity (lying flat at rest: 0, 0, -1);
+// SDL has x right, y out of the face and z towards the player, in rad/s and
+// m/s^2 as the reaction to gravity (up positive). As SwitchWakerHD's
+// input_switch.cpp.
 static void sample_motion(void) {
     if (!g_motion_started)
         return;
@@ -135,7 +137,8 @@ static void sample_motion(void) {
     if ((style & HidNpadStyleTag_NpadHandheld) && g_motion_count[MOTION_HANDHELD] > 0)
         handle = &g_motion[MOTION_HANDHELD][0];
     else if ((style & HidNpadStyleTag_NpadJoyDual) && g_motion_count[MOTION_JOY_DUAL] > 0)
-        handle = &g_motion[MOTION_JOY_DUAL][1];
+        // The right Joy-Con when there is one (it aims), else the left.
+        handle = &g_motion[MOTION_JOY_DUAL][(padGetAttributes(&g_pad) & HidNpadAttribute_IsRightConnected) ? 1 : 0];
     else if ((style & HidNpadStyleTag_NpadFullKey) && g_motion_count[MOTION_FULL_KEY] > 0)
         handle = &g_motion[MOTION_FULL_KEY][0];
     HidSixAxisSensorState state;
@@ -148,9 +151,9 @@ static void sample_motion(void) {
     g_gyro[0] = state.angular_velocity.x * turn;
     g_gyro[1] = state.angular_velocity.z * turn;
     g_gyro[2] = -state.angular_velocity.y * turn;
-    g_accel[0] = state.acceleration.x * SDL_STANDARD_GRAVITY;
-    g_accel[1] = state.acceleration.z * SDL_STANDARD_GRAVITY;
-    g_accel[2] = -state.acceleration.y * SDL_STANDARD_GRAVITY;
+    g_accel[0] = -state.acceleration.x * SDL_STANDARD_GRAVITY;
+    g_accel[1] = -state.acceleration.z * SDL_STANDARD_GRAVITY;
+    g_accel[2] = state.acceleration.y * SDL_STANDARD_GRAVITY;
 }
 
 static void queue_device_event(Uint32 type) {
