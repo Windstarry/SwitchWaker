@@ -86,7 +86,8 @@ the same configure can run directly. This reproduces the script's `cmake` call b
 **not** a supported path: check the script's `cmake` line (the "bash -lc" block) when it changes.
 
 What was checked this way: the configure, Dawn and the game units compile (for example
-`d_a_player_main.cpp`, `pc_qol.cpp`, `pc_menu.cpp`). The pipeline cache and DKSH cache
+`d_a_player_main.cpp`, `pc_qol.cpp`, `pc_menu.cpp`). The final link (the ELF and the NRO) was
+**not** checked this way. The pipeline cache and DKSH cache
 (`native/tools/dksh_cache`, which has its own Debian container) are **not** built, so the result is
 not the `deploy`-ready set of files; use the container build for that.
 
@@ -112,6 +113,7 @@ cmake -S switch/native -B build/switch-native-local -G Ninja \
   -DFETCHCONTENT_SOURCE_DIR_DAWN=$PWD/build/switch-dawn-src/<key> -DCOS_RUNTIME_ASSETS=ON
 
 ninja -C build/switch-native-local switchwaker.elf    # or one object, to check a change
+ninja -C build/switch-native-local cos_nro            # the NRO: build/switch-native-local/switchwaker.nro
 ```
 
 - `COS_VERSION` is a number (0 D44J01, 1 GZLJ01, 2 GZLE01, 3 GZLP01), not the game id.
